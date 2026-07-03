@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAIN SHARE — a value-based care game</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --felt:#0d3b2e;
+    --felt-deep:#07251c;
+    --felt-line:#1a5443;
+    --paper:#f4eeda;
+    --paper-dim:#e9e1c8;
+    --ink:#1c2a1f;
+    --gold:#d4a72c;
+    --gold-dim:#a37f1d;
+    --red:#c94f3d;
+    --green-win:#2e7d4f;
+    --mono:'IBM Plex Mono',monospace;
+    --sans:'IBM Plex Sans',sans-serif;
+    --serif:'Instrument Serif',serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:
+      radial-gradient(ellipse at 50% -10%, #135040 0%, var(--felt) 45%, var(--felt-deep) 100%);
+    min-height:100vh;
+    font-family:var(--sans);
+    color:var(--paper);
+    padding:24px 16px 80px;
+  }
+  .wrap{max-width:680px;margin:0 auto}
+  .masthead{text-align:center;margin-bottom:28px}
+  .masthead .rule{display:flex;align-items:center;gap:12px;color:var(--gold);font-family:var(--mono);font-size:11px;letter-spacing:.28em;text-transform:uppercase}
+  .masthead .rule::before,.masthead .rule::after{content:"";flex:1;height:1px;background:var(--gold-dim)}
+  h1.logo{font-family:var(--serif);font-size:clamp(44px,10vw,64px);line-height:1;letter-spacing:.01em;color:var(--paper);margin:10px 0 6px}
+  h1.logo em{color:var(--gold);font-style:italic}
+  .tagline{font-family:var(--serif);font-style:italic;font-size:18px;color:#cfe3d4;opacity:.85}
+
+  .card{
+    background:var(--paper);color:var(--ink);
+    border-radius:6px;
+    box-shadow:0 1px 0 rgba(255,255,255,.15) inset, 0 12px 30px rgba(0,0,0,.45);
+    padding:24px 22px;
+    margin-bottom:20px;
+  }
+  .card h2{font-family:var(--serif);font-size:28px;line-height:1.1;margin-bottom:4px}
+  .card h2 em{font-style:italic;color:var(--gold-dim)}
+  .card .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:8px}
+  .card p{font-size:15px;line-height:1.55;color:#3a4438}
+  .card p+p{margin-top:10px}
+
+  .yearchip{
+    display:inline-block;font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+    border:1px solid var(--gold-dim);color:var(--gold-dim);border-radius:999px;padding:4px 12px;margin-bottom:12px;
+  }
+
+  button{
+    font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:.06em;
+    border:none;border-radius:4px;cursor:pointer;
+    padding:13px 20px;
+    transition:transform .06s ease, filter .15s ease;
+  }
+  button:active{transform:translateY(1px)}
+  .btn-gold{background:var(--gold);color:#241d05;width:100%}
+  .btn-gold:hover{filter:brightness(1.06)}
+  .btn-gold:disabled{background:#c9c2a8;color:#7d775f;cursor:not-allowed}
+  .btn-ghost{background:transparent;border:1px solid #9aa393;color:#3a4438}
+  .btn-felt{background:var(--felt);color:var(--paper);width:100%}
+
+  input[type=text]{
+    width:100%;font-family:var(--mono);font-size:15px;padding:11px 12px;
+    border:1px solid #b7b099;border-radius:4px;background:#fbf7ea;color:var(--ink);
+  }
+  input[type=text]:focus{outline:2px solid var(--gold);border-color:var(--gold)}
+  label.fld{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#6b715f;margin:14px 0 6px}
+
+  .seg{display:flex;gap:8px}
+  .seg button{flex:1;background:#fbf7ea;border:1px solid #b7b099;color:#3a4438;padding:10px 0}
+  .seg button.on{background:var(--felt);color:var(--paper);border-color:var(--felt)}
+
+  /* handoff screen */
+  .handoff{
+    text-align:center;padding:56px 20px;
+    border:1px dashed var(--gold-dim);border-radius:8px;background:rgba(0,0,0,.18);
+  }
+  .handoff .who{font-family:var(--serif);font-size:40px;line-height:1.05;margin:10px 0 4px}
+  .handoff .role{font-family:var(--mono);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+  .handoff p{color:#cfe3d4;font-size:14px;margin:12px auto 24px;max-width:380px;line-height:1.5}
+  .handoff button{max-width:320px;margin:0 auto;display:block}
+
+  /* lever list */
+  .lever{
+    border:1px solid #c6bfa4;border-radius:6px;padding:14px;margin-bottom:10px;cursor:pointer;
+    background:#faf5e6;position:relative;
+  }
+  .lever.sel{border-color:var(--gold);background:#fdf3d2;box-shadow:0 0 0 2px var(--gold)}
+  .lever.off{opacity:.42;cursor:not-allowed}
+  .lever .lname{font-family:var(--serif);font-size:19px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .lever .ltag{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#fff;background:var(--gold-dim);border-radius:3px;padding:2px 7px;white-space:nowrap}
+  .lever .ltag.good{background:var(--green-win)}
+  .lever .ldesc{font-size:13.5px;color:#4a5245;margin-top:5px;line-height:1.45}
+  .lever .lfx{font-family:var(--mono);font-size:11.5px;color:#7a6414;margin-top:7px;line-height:1.5}
+  .pickcount{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:#6b715f;text-align:center;margin:10px 0}
+
+  /* allocation */
+  .blocksleft{
+    text-align:center;font-family:var(--mono);margin:6px 0 16px;
+    font-size:13px;color:#6b715f;letter-spacing:.08em;
+  }
+  .blocksleft b{font-size:22px;color:var(--ink)}
+  .alloc{border:1px solid #c6bfa4;border-radius:6px;padding:13px 14px;margin-bottom:10px;background:#faf5e6}
+  .alloc.burden{background:#f0e2dc;border-color:#d3a89b}
+  .alloc .arow{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .alloc .aname{font-family:var(--serif);font-size:18px}
+  .alloc .adesc{font-size:12.5px;color:#5a6254;margin-top:3px;line-height:1.4}
+  .stepper{display:flex;align-items:center;gap:0;flex-shrink:0}
+  .stepper button{width:38px;height:38px;padding:0;font-size:19px;background:var(--felt);color:var(--paper);border-radius:4px 0 0 4px}
+  .stepper button:last-child{border-radius:0 4px 4px 0}
+  .stepper button:disabled{background:#b9bdb1;cursor:not-allowed}
+  .stepper .val{width:44px;text-align:center;font-family:var(--mono);font-size:19px;font-weight:600;background:#fff;height:38px;line-height:38px;border-top:1px solid #b7b099;border-bottom:1px solid #b7b099}
+  .pips{margin-top:8px;display:flex;gap:4px;flex-wrap:wrap}
+  .pip{width:14px;height:14px;border-radius:50%;border:1px solid #a9a288;background:#efe8d0}
+  .pip.f{background:var(--gold);border-color:var(--gold-dim)}
+  .pip.b{background:var(--red);border-color:#8f3628}
+
+  /* ledger tape */
+  .tape{
+    background:#fbf7ea;color:var(--ink);
+    font-family:var(--mono);font-size:13.5px;
+    max-width:440px;margin:0 auto 20px;
+    padding:22px 20px 30px;
+    box-shadow:0 14px 34px rgba(0,0,0,.5);
+    position:relative;
+    border-radius:4px 4px 0 0;
+  }
+  .tape::after{
+    content:"";position:absolute;left:0;right:0;bottom:-8px;height:9px;
+    background:radial-gradient(circle at 8px 0px, #fbf7ea 6px, transparent 6.6px) left top/16px 9px repeat-x;
+  }
+  .tape .thead{text-align:center;border-bottom:1px dashed #9c9478;padding-bottom:10px;margin-bottom:12px}
+  .tape .thead .t1{font-weight:600;letter-spacing:.2em;font-size:12px}
+  .tape .thead .t2{font-size:11px;color:#6b715f;margin-top:3px}
+  .tline{display:flex;justify-content:space-between;gap:10px;padding:3.5px 0;opacity:0;animation:tprint .3s ease forwards}
+  .tline .lab{color:#3a4438}
+  .tline .amt{font-weight:600;white-space:nowrap}
+  .tline.sub .lab{padding-left:14px;color:#6b715f;font-size:12.5px}
+  .tline.rule{border-top:1px dashed #9c9478;margin-top:6px;padding-top:8px}
+  .tline.total .lab,.tline.total .amt{font-weight:600;font-size:15px}
+  .neg{color:var(--red)} .pos{color:var(--green-win)} .gld{color:var(--gold-dim)}
+  @keyframes tprint{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .stamp{
+    text-align:center;margin-top:14px;font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+    border:2px solid;border-radius:4px;display:block;width:max-content;margin-left:auto;margin-right:auto;
+    padding:5px 14px;transform:rotate(-2deg);opacity:0;animation:tprint .4s ease .2s forwards;
+  }
+  .stamp.win{color:var(--green-win);border-color:var(--green-win)}
+  .stamp.lose{color:var(--red);border-color:var(--red)}
+
+  /* scoreboard */
+  table.score{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+  table.score th{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#6b715f;text-align:right;padding:6px 6px;border-bottom:1px solid #c6bfa4;font-weight:500}
+  table.score th:first-child,table.score td:first-child{text-align:left}
+  table.score td{padding:8px 6px;text-align:right;border-bottom:1px dashed #d9d2b7}
+  table.score tr.pe td{background:#f4e9c6}
+  .roi{font-family:var(--serif);font-size:15px;font-style:italic;color:#7a6414}
+
+  .note{font-size:12.5px;color:#6b715f;line-height:1.5;margin-top:12px;font-style:italic}
+  .lesson{border-left:3px solid var(--gold);padding:10px 0 10px 14px;margin:14px 0;background:#faf3dd}
+  .lesson .lt{font-family:var(--serif);font-size:17px;margin-bottom:3px}
+  .lesson p{font-size:13.5px}
+
+  .footer{margin-top:32px;text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:#6f8f7c;text-transform:uppercase;line-height:2}
+  .luck{font-family:var(--mono);font-size:12px;text-align:center;color:#6b715f;margin-bottom:10px}
+  @media(max-width:480px){.card{padding:20px 16px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="masthead">
+    <div class="rule">Performance Year Reconciliation</div>
+    <h1 class="logo">GAIN <em>SHARE</em></h1>
+    <div class="tagline">an asymmetric tabletop game about value-based care — the house always wins</div>
+  </div>
+  <div id="app"></div>
+  <div class="footer">Pass one device around the table · 5 performance years · 15–25 min<br>Modeled on the VBC simulation math at vbcsim.pcplens.com</div>
+</div>
+
+<script>
+/* ================= MODEL CONSTANTS ================= */
+const YEARS = 5;
+const BLOCKS = 10;                 // time blocks per PCP per year
+const BLOCK_REV = 10000;           // $ practice margin per block of patient care
+const BASE_BURDEN = 2;             // mandatory VBC admin blocks
+const POD = 20;                    // each player leads a pod of 20 practices
+const POD_TCOC = POD * 8000000;    // 20 PCPs x 800 attributed pts x $10k
+const MSR = 1.5;                   // minimum savings rate %
+const ACO_SHARE = 0.5;             // ACO share of gross savings
+const OPS_RESERVE = 0.2;           // ACO holdback
+const PE_CUT = 0.5;                // PE share of distributable
+const PE_INVEST = 3100000;         // 18-month ACO funding
+const MGMT_FEE = 1000000;          // annual management fee
+const RECAP_DIV = 2500000;         // special dividend
+const RECAP_DEBT = 600000;         // annual debt service after recap
+const FFS_SKIM = 2000000;          // annual commercial FFS skim
+const CARE_COST = 2000000;         // care-team investment
+
+const LEVERS = [
+  {id:'raf',  name:'Push HCC / RAF coding', tag:'burden',
+   desc:'Mandate risk-adjustment documentation sprints across the network. Measured savings go up. So does everyone\u2019s inbox.',
+   fx:'+0.8% measured savings · every PCP loses 1 time block to admin'},
+  {id:'fee',  name:'Charge a management fee', tag:'guaranteed',
+   desc:'Bill the ACO for \u201Cstrategic services.\u201D Paid whether or not anyone saves a dollar.',
+   fx:'PE banks $1M off the top of the pool, hit or miss'},
+  {id:'recap',name:'Dividend recapitalization', tag:'one-time',
+   desc:'Borrow against the ACO\u2019s projected gain share and pay yourself a special dividend. The ACO carries the debt.',
+   fx:'PE banks $2.5M now · pool loses $600K/yr to debt service, every year after'},
+  {id:'tier', name:'Tier the network', tag:'burden',
+   desc:'Split the pods into \u201Chigh\u201D and \u201Clow\u201D performers. The lowest-scoring pod gets an upside-only contract at half the share \u2014 PE keeps the difference.',
+   fx:'Lowest pod\u2019s check cut 50% · PE pockets the other half'},
+  {id:'ffs',  name:'Squeeze commercial FFS', tag:'recurring',
+   desc:'Use the consolidated network\u2019s leverage to negotiate higher fee-for-service rates \u2014 and skim the spread. Total cost of care rises.',
+   fx:'PE banks $2M/yr from now on · savings target gets 0.4% harder every future year'},
+  {id:'care', name:'Invest in care teams', tag:'good', good:true,
+   desc:'Actually fund nurses, pharmacists, and care coordinators. Expensive. Works.',
+   fx:'Costs PE $2M · +1.2% real savings this year · burden \u22121 for every PCP'},
+];
+
+const ALLOCS = [
+  {id:'see',  name:'See patients', desc:'Billable clinic time. Keeps the lights on — every block is $10K of practice margin.'},
+  {id:'coord',name:'Care coordination', desc:'Unpaid work that genuinely lowers total cost of care: transitions, follow-ups, closing loops.'},
+  {id:'code', name:'Coding & documentation', desc:'Unpaid work that raises measured savings via risk scores. Paper savings — but they count at reconciliation.'},
+  {id:'push', name:'Organize & push back', desc:'Meet with the other PCPs, demand governance seats. Every 3 blocks the network pools, next year\u2019s imposed burden drops by 1 for everyone.'},
+];
+
+/* ================= STATE ================= */
+let S = null;
+const $ = id => document.getElementById(id);
+const app = () => $('app');
+const fmt = n => {
+  const neg = n < 0; const a = Math.abs(Math.round(n));
+  const s = a >= 1000000 ? '$'+(a/1000000).toFixed(a%1000000===0?0:1)+'M'
+          : a >= 1000    ? '$'+Math.round(a/1000)+'K'
+          : '$'+a;
+  return (neg?'\u2212':'')+s;
+};
+const fmtFull = n => (n<0?'\u2212$':'$')+Math.abs(Math.round(n)).toLocaleString();
+
+function newGame(peName, pcpNames){
+  S = {
+    year:1, peName, phase:'handoff-pe',
+    pcps: pcpNames.map(n=>({name:n, cum:0, alloc:null, tiered:false, lastNet:0})),
+    peCash:-PE_INVEST, peBanked:{invest:-PE_INVEST, gain:0, fee:0, recap:0, ffs:0, care:0},
+    recapDone:false, ffsYears:0, reliefNext:0, levers:[], history:[]
+  };
+  render();
+}
+
+/* ================= RENDER ROUTER ================= */
+function render(){
+  if(!S){ renderSetup(); return; }
+  ({'handoff-pe':renderHandoffPE,'pe':renderPE,
+    'handoff-pcp':renderHandoffPCP,'pcp':renderPCP,
+    'recon':renderRecon,'score':renderScore,'final':renderFinal})[S.phase]();
+  window.scrollTo({top:0});
+}
+
+/* ================= SETUP ================= */
+let setupN = 3;
+function renderSetup(){
+  app().innerHTML = `
+  <div class="card">
+    <div class="kicker">How it works</div>
+    <h2>One of you is the <em>funder</em>.</h2>
+    <p>Your independent-physician ACO needs <b>$3.1M</b> in upfront capital to survive an 18-month reconciliation cycle. A private equity firm is happy to write the check — for 50% of the gain share, and a few other terms in the fine print.</p>
+    <p>Each PCP player leads a <b>pod of 20 independent practices</b> in the network. Each performance year: the PE partner secretly pulls <b>two levers</b>, then each PCP allocates <b>10 time blocks</b> between seeing patients, doing the unpaid work of value-based care, and pushing back — your pod follows your lead. Then the reconciliation tape prints, and you find out who actually made money. Your score is <b>your own net</b>: your share of the pod's checks, minus the billing you gave up.</p>
+  </div>
+  <div class="card">
+    <div class="kicker">Seat the table</div>
+    <label class="fld">PE partner's name</label>
+    <input type="text" id="pe-name" placeholder="e.g. Sterling" maxlength="14">
+    <label class="fld">Number of PCPs</label>
+    <div class="seg" id="npc">
+      ${[2,3,4].map(n=>`<button class="${n===setupN?'on':''}" onclick="setN(${n})">${n}</button>`).join('')}
+    </div>
+    <div id="pcp-names">${pcpInputs()}</div>
+    <div style="height:18px"></div>
+    <button class="btn-gold" onclick="startGame()">Sign the term sheet</button>
+    <p class="note">Solo? Play all seats yourself — it's a fast way to feel both sides of the table.</p>
+  </div>`;
+}
+function pcpInputs(){
+  let h='';
+  for(let i=0;i<setupN;i++) h+=`<label class="fld">PCP ${i+1}'s name</label><input type="text" id="pcp-${i}" placeholder="e.g. Dr. ${['Alvarez','Okafor','Lindqvist','Mercer'][i]}" maxlength="14">`;
+  return h;
+}
+function setN(n){
+  const vals=[]; for(let i=0;i<setupN;i++){const el=$('pcp-'+i); if(el) vals[i]=el.value;}
+  setupN=n;
+  document.querySelectorAll('#npc button').forEach((b,i)=>b.classList.toggle('on',[2,3,4][i]===n));
+  $('pcp-names').innerHTML=pcpInputs();
+  vals.forEach((v,i)=>{const el=$('pcp-'+i); if(el&&v) el.value=v;});
+}
+function startGame(){
+  const pe=$('pe-name').value.trim()||'The Fund';
+  const names=[]; for(let i=0;i<setupN;i++) names.push($('pcp-'+i).value.trim()||'PCP '+(i+1));
+  newGame(pe,names);
+}
+
+/* ================= PE TURN ================= */
+function renderHandoffPE(){
+  app().innerHTML = `
+  <div class="handoff">
+    <div class="role">Performance Year ${S.year} · Funder's move</div>
+    <div class="who">${esc(S.peName)}</div>
+    <p>Pass the device to the PE partner. PCPs, look away — these picks stay hidden until reconciliation.</p>
+    <button class="btn-gold" onclick="S.phase='pe';render()">I'm ${esc(S.peName)} — show my levers</button>
+  </div>`;
+}
+let pePicks=[];
+function renderPE(){
+  pePicks=[];
+  const burden = curBurden();
+  app().innerHTML = `
+  <div class="card">
+    <div class="yearchip">Year ${S.year} of ${YEARS}</div>
+    <div class="kicker">Confidential — ${esc(S.peName)} only</div>
+    <h2>Pick <em>two</em> levers.</h2>
+    <p>Fund position: <b>${fmt(S.peCash)}</b>${S.peCash<0?' (still recovering the $3.1M)':''}. PCP admin burden currently ${burden} block${burden!==1?'s':''} each.</p>
+    <div style="height:14px"></div>
+    <div id="levers">${LEVERS.map(lv=>{
+      const off = lv.id==='recap'&&S.recapDone;
+      return `<div class="lever ${off?'off':''}" id="lv-${lv.id}" onclick="${off?'':`togLever('${lv.id}')`}">
+        <div class="lname">${lv.name}<span class="ltag ${lv.good?'good':''}">${off?'used':lv.tag}</span></div>
+        <div class="ldesc">${lv.desc}</div>
+        <div class="lfx">${lv.fx}</div>
+      </div>`;}).join('')}</div>
+    <div class="pickcount" id="pickct">0 of 2 selected</div>
+    <button class="btn-gold" id="pe-go" disabled onclick="lockPE()">Lock in & pass the device</button>
+  </div>`;
+}
+function togLever(id){
+  const i=pePicks.indexOf(id);
+  if(i>=0) pePicks.splice(i,1);
+  else if(pePicks.length<2) pePicks.push(id);
+  LEVERS.forEach(lv=>{const el=$('lv-'+lv.id); if(el) el.classList.toggle('sel',pePicks.includes(lv.id));});
+  $('pickct').textContent=`${pePicks.length} of 2 selected`;
+  $('pe-go').disabled = pePicks.length!==2;
+}
+function lockPE(){
+  S.levers=[...pePicks];
+  S.turn=0; S.phase='handoff-pcp'; render();
+}
+
+/* ================= PCP TURNS ================= */
+function curBurden(){
+  let b = BASE_BURDEN - S.reliefNext;
+  return Math.max(0,b);
+}
+function yearBurden(){ // includes this year's PE picks
+  let b = curBurden();
+  if(S.levers.includes('raf')) b+=1;
+  if(S.levers.includes('care')) b-=1;
+  return Math.max(0,Math.min(6,b));
+}
+function renderHandoffPCP(){
+  const p=S.pcps[S.turn];
+  app().innerHTML = `
+  <div class="handoff">
+    <div class="role">Performance Year ${S.year} · PCP ${S.turn+1} of ${S.pcps.length}</div>
+    <div class="who">${esc(p.name)}</div>
+    <p>Pass the device. You don't know what the fund just did — you'll find out when the tape prints.</p>
+    <button class="btn-gold" onclick="S.phase='pcp';render()">I'm ${esc(p.name)} — plan my year</button>
+  </div>`;
+}
+let alloc={};
+function renderPCP(){
+  const p=S.pcps[S.turn];
+  const burden=yearBurden();
+  const free=BLOCKS-burden;
+  alloc={see:free, coord:0, code:0, push:0};
+  app().innerHTML = `
+  <div class="card">
+    <div class="yearchip">Year ${S.year} · ${esc(p.name)}</div>
+    <h2>Allocate your <em>10 blocks</em>.</h2>
+    <p>Each block is roughly a half-day a week for the year. Blocks not spent seeing patients are unpaid — that's your opportunity cost.</p>
+    <div class="blocksleft">unassigned&nbsp; <b id="left">0</b></div>
+    <div class="alloc burden">
+      <div class="arow"><div><div class="aname">Imposed admin burden</div>
+      <div class="adesc">Portal messages, prior auths, quality-measure paperwork. Not optional. Not billable.</div></div>
+      <div class="stepper"><div class="val" style="border:1px solid #b7b099;border-radius:4px">${burden}</div></div></div>
+      <div class="pips">${'<span class="pip b"></span>'.repeat(burden)}</div>
+    </div>
+    ${ALLOCS.map(a=>`
+    <div class="alloc">
+      <div class="arow"><div><div class="aname">${a.name}</div><div class="adesc">${a.desc}</div></div>
+      <div class="stepper">
+        <button onclick="bump('${a.id}',-1)">&minus;</button>
+        <div class="val" id="v-${a.id}">0</div>
+        <button onclick="bump('${a.id}',1)">+</button>
+      </div></div>
+      <div class="pips" id="p-${a.id}"></div>
+    </div>`).join('')}
+    <div style="height:8px"></div>
+    <button class="btn-gold" id="pcp-go" onclick="lockPCP()">Commit my year</button>
+  </div>`;
+  syncAlloc();
+}
+function bump(id,d){
+  const total=alloc.see+alloc.coord+alloc.code+alloc.push;
+  const cap=BLOCKS-yearBurden();
+  if(d>0 && total>=cap) return;
+  if(alloc[id]+d<0) return;
+  alloc[id]+=d; syncAlloc();
+}
+function syncAlloc(){
+  const cap=BLOCKS-yearBurden();
+  const total=alloc.see+alloc.coord+alloc.code+alloc.push;
+  $('left').textContent=cap-total;
+  ALLOCS.forEach(a=>{
+    $('v-'+a.id).textContent=alloc[a.id];
+    $('p-'+a.id).innerHTML='<span class="pip f"></span>'.repeat(alloc[a.id]);
+  });
+  $('pcp-go').disabled = total!==cap;
+}
+function lockPCP(){
+  S.pcps[S.turn].alloc={...alloc};
+  S.turn++;
+  if(S.turn<S.pcps.length){S.phase='handoff-pcp';}
+  else {S.phase='recon'; reconcile();}
+  render();
+}
+
+/* ================= RECONCILIATION ================= */
+function reconcile(){
+  const N=S.pcps.length;
+  const L=id=>S.levers.includes(id);
+  const burden=yearBurden();
+
+  // savings model (percent of TCOC)
+  const avg = k => S.pcps.reduce((s,p)=>s+p.alloc[k],0)/N;
+  let pct = 1.2;                       // secular drift
+  pct += 0.55*avg('coord');            // real savings
+  pct += 0.45*avg('code');             // measured (paper) savings
+  if(L('raf'))  pct += 0.8;
+  if(L('care')) pct += 1.2;
+  if(L('tier')) pct += 0.2;
+  pct -= 0.4*S.ffsYears;               // FFS squeeze inflates TCOC baseline
+  pct -= 0.15*Math.max(0,burden-BASE_BURDEN); // burnout drag
+  const luck = (Math.random()*3-1.5);
+  pct += luck;
+  pct = Math.max(0,pct);
+
+  const totalTCOC=N*POD_TCOC;
+  const hit = pct>=MSR;
+  const gross = hit? pct/100*totalTCOC : 0;
+  const acoShare = gross*ACO_SHARE;
+  const holdback = acoShare*OPS_RESERVE;
+  let pool = acoShare-holdback;
+
+  const items=[]; // tape lines beyond the standard ones
+  let peGain=0, peFee=0, peRecap=0, peFFS=0, peCareCost=0, tierSkim=0;
+
+  if(L('fee')){ peFee=MGMT_FEE; pool=Math.max(0,pool-peFee); }
+  if(S.recapDone){ const debt=Math.min(pool,RECAP_DEBT); pool-=debt; if(debt>0)items.push(['Debt service (recap loan)',-debt,'neg','sub']); }
+  if(L('recap')&&!S.recapDone){ S.recapDone=true; peRecap=RECAP_DIV; }
+  if(L('ffs')){ S.ffsYears++; }
+  if(S.ffsYears>0){ peFFS=FFS_SKIM; }
+  if(L('care')){ peCareCost=CARE_COST; }
+
+  peGain = pool*PE_CUT;
+  let pcpPool = pool-peGain;
+  let perPod = pcpPool/N;
+
+  // tiering: lowest cumulative pod gets half share, PE takes difference
+  let tieredIdx=-1;
+  if(L('tier')){
+    tieredIdx = S.pcps.reduce((m,p,i)=>p.cum<S.pcps[m].cum?i:m,0);
+    tierSkim = perPod*0.5;
+  }
+
+  // relief from pushback applies NEXT year
+  const pushTotal=S.pcps.reduce((s,p)=>s+p.alloc.push,0);
+  S.reliefNext = Math.min(BASE_BURDEN, Math.floor(pushTotal/3));
+
+  // settle PCPs: score is per-physician (pod check / 20, minus your forgone billing)
+  S.pcps.forEach((p,i)=>{
+    const podShare = i===tieredIdx? perPod*0.5 : perPod;
+    const share = podShare/POD; // your slice
+    const forgone=(BLOCKS-p.alloc.see)*BLOCK_REV; // every non-clinical block = forgone billing
+    p.lastPod=podShare; p.lastShare=share; p.lastForgone=forgone; p.lastNet=share-forgone; p.tiered=(i===tieredIdx);
+    p.cum+=p.lastNet;
+  });
+
+  const peYear = peGain+peFee+peRecap+peFFS+tierSkim-peCareCost;
+  S.peCash += peYear;
+  S.peBanked.gain+=peGain+tierSkim; S.peBanked.fee+=peFee; S.peBanked.recap+=peRecap; S.peBanked.ffs+=peFFS; S.peBanked.care-=peCareCost;
+
+  S.recon={pct,luck,hit,gross,acoShare,holdback,pool,peGain,peFee,peRecap,peFFS,peCareCost,tierSkim,perPod,tieredIdx,items,peYear,burden,pushTotal};
+  S.history.push({year:S.year,pct,peYear,hit});
+}
+
+function renderRecon(){
+  const r=S.recon; let d=0; const dl=()=>`style="animation-delay:${(d+=0.12).toFixed(2)}s"`;
+  const leverNames=S.levers.map(id=>LEVERS.find(l=>l.id===id).name);
+  app().innerHTML = `
+  <div class="luck">Market factor rolled: ${r.luck>=0?'+':''}${r.luck.toFixed(1)}% &nbsp;·&nbsp; Fund's hidden levers: <b>${leverNames.join('</b> + <b>')}</b></div>
+  <div class="tape">
+    <div class="thead">
+      <div class="t1">ACO RECONCILIATION</div>
+      <div class="t2">Performance Year ${S.year} · settled ~18 months after first dollar in</div>
+    </div>
+    <div class="tline" ${dl()}><span class="lab">Measured savings</span><span class="amt">${r.pct.toFixed(1)}% of TCOC</span></div>
+    <div class="tline" ${dl()}><span class="lab">Minimum savings rate</span><span class="amt">${MSR.toFixed(1)}%</span></div>
+    ${r.hit?`
+    <div class="tline rule" ${dl()}><span class="lab">Gross savings</span><span class="amt">${fmt(r.gross)}</span></div>
+    <div class="tline sub" ${dl()}><span class="lab">Payer keeps 50%</span><span class="amt neg">${fmt(-r.gross*0.5)}</span></div>
+    <div class="tline sub" ${dl()}><span class="lab">ACO ops + reserve</span><span class="amt neg">${fmt(-r.holdback)}</span></div>
+    ${r.peFee?`<div class="tline sub" ${dl()}><span class="lab">Management fee \u2192 fund</span><span class="amt neg">${fmt(-r.peFee)}</span></div>`:''}
+    ${r.items.map(it=>`<div class="tline ${it[3]}" ${dl()}><span class="lab">${it[0]}</span><span class="amt ${it[2]}">${fmt(it[1])}</span></div>`).join('')}
+    <div class="tline" ${dl()}><span class="lab">Distributable pool</span><span class="amt">${fmt(r.pool)}</span></div>
+    <div class="tline sub" ${dl()}><span class="lab">Fund's 50% of pool</span><span class="amt gld">${fmt(r.peGain)}</span></div>
+    ${r.tierSkim?`<div class="tline sub" ${dl()}><span class="lab">Tiering skim \u2192 fund</span><span class="amt gld">${fmt(r.tierSkim)}</span></div>`:''}
+    `:`
+    <div class="tline rule" ${dl()}><span class="lab">Savings below MSR</span><span class="amt neg">$0 distributed</span></div>
+    ${r.peFee?`<div class="tline sub" ${dl()}><span class="lab">Management fee \u2192 fund (paid anyway)</span><span class="amt gld">${fmt(r.peFee)}</span></div>`:''}
+    `}
+    ${r.peRecap?`<div class="tline" ${dl()}><span class="lab">Special dividend (recap loan)</span><span class="amt gld">${fmt(r.peRecap)}</span></div>`:''}
+    ${r.peFFS?`<div class="tline" ${dl()}><span class="lab">Commercial FFS skim \u2192 fund</span><span class="amt gld">${fmt(r.peFFS)}</span></div>`:''}
+    ${r.peCareCost?`<div class="tline" ${dl()}><span class="lab">Fund's care-team investment</span><span class="amt neg">${fmt(-r.peCareCost)}</span></div>`:''}
+    <div class="tline rule total" ${dl()}><span class="lab">${esc(S.peName)} net, this year</span><span class="amt ${r.peYear>=0?'pos':'neg'}">${fmt(r.peYear)}</span></div>
+    ${r.pushTotal>=3?`<div class="tline" ${dl()}><span class="lab">Pushback organized</span><span class="amt pos">burden \u22121 next yr</span></div>`:''}
+    <span class="stamp ${r.hit?'win':'lose'}" ${dl()}>${r.hit?'Target met':'Target missed'}</span>
+  </div>
+  <div class="card">
+    <div class="kicker">Physician settlements — Year ${S.year} (your personal net)</div>
+    ${S.pcps.map(p=>`
+      <div style="border-bottom:1px dashed #d9d2b7;padding:9px 0;font-family:var(--mono);font-size:13px">
+        <div style="display:flex;justify-content:space-between"><b>${esc(p.name)}${p.tiered?' <span style="color:var(--red);font-size:10px">POD TIERED \u2193</span>':''}</b>
+        <b class="${p.lastNet>=0?'pos':'neg'}">${fmtFull(p.lastNet)} net</b></div>
+        <div style="display:flex;justify-content:space-between;color:#6b715f;font-size:12px;margin-top:2px">
+        <span>pod check ${fmt(p.lastPod)} \u2192 your slice ${fmt(p.lastShare)}</span><span>forgone billing \u2212${fmt(p.lastForgone)}</span></div>
+      </div>`).join('')}
+    <p class="note">Forgone billing = every block you didn't spend seeing patients, valued at $10K. The video's version of this: ~$86K of opportunity cost per PCP per 18-month cycle — often more than the bonus check itself.</p>
+    <div style="height:12px"></div>
+    <button class="btn-gold" onclick="S.phase='score';render()">Show the running score</button>
+  </div>`;
+}
+
+/* ================= SCOREBOARD ================= */
+function renderScore(){
+  app().innerHTML = `
+  <div class="card">
+    <div class="yearchip">After Year ${S.year} of ${YEARS}</div>
+    <h2>The running <em>ledger</em>.</h2>
+    <table class="score">
+      <tr><th>Seat</th><th>This yr</th><th>Cumulative</th></tr>
+      <tr class="pe"><td>${esc(S.peName)} <span style="color:#a37f1d;font-size:10px">FUND</span></td>
+        <td>${fmt(S.recon.peYear)}</td><td><b>${fmt(S.peCash)}</b></td></tr>
+      ${S.pcps.map(p=>`<tr><td>${esc(p.name)}</td><td class="${p.lastNet>=0?'pos':'neg'}">${fmt(p.lastNet)}</td><td class="${p.cum>=0?'pos':'neg'}"><b>${fmt(p.cum)}</b></td></tr>`).join('')}
+    </table>
+    <p class="roi" style="margin-top:12px">${S.peCash>0? 'Fund is up '+Math.round(S.peCash/PE_INVEST*100)+'% on its $3.1M — and counting.' : 'Fund still recovering its $3.1M. Patience; the levers compound.'}</p>
+    <div style="height:14px"></div>
+    <button class="btn-gold" onclick="nextYear()">${S.year<YEARS?'Begin Performance Year '+(S.year+1):'Print the final statement'}</button>
+  </div>`;
+}
+function nextYear(){
+  if(S.year<YEARS){ S.year++; S.phase='handoff-pe'; }
+  else S.phase='final';
+  render();
+}
+
+/* ================= FINAL ================= */
+function renderFinal(){
+  const totalPE=S.peCash;
+  const roiPct=Math.round((totalPE/PE_INVEST)*100);
+  const best=[...S.pcps].sort((a,b)=>b.cum-a.cum)[0];
+  const anyPos=S.pcps.some(p=>p.cum>0);
+  app().innerHTML = `
+  <div class="tape">
+    <div class="thead"><div class="t1">FINAL STATEMENT</div><div class="t2">Five performance years · all seats settled</div></div>
+    <div class="tline" style="animation-delay:.1s"><span class="lab">Fund invested</span><span class="amt neg">${fmt(-PE_INVEST)}</span></div>
+    <div class="tline sub" style="animation-delay:.2s"><span class="lab">Gain share + tiering</span><span class="amt gld">${fmt(S.peBanked.gain)}</span></div>
+    <div class="tline sub" style="animation-delay:.3s"><span class="lab">Management fees</span><span class="amt gld">${fmt(S.peBanked.fee)}</span></div>
+    <div class="tline sub" style="animation-delay:.4s"><span class="lab">Dividend recap</span><span class="amt gld">${fmt(S.peBanked.recap)}</span></div>
+    <div class="tline sub" style="animation-delay:.5s"><span class="lab">Commercial FFS skim</span><span class="amt gld">${fmt(S.peBanked.ffs)}</span></div>
+    ${S.peBanked.care<0?`<div class="tline sub" style="animation-delay:.55s"><span class="lab">Care-team investments</span><span class="amt neg">${fmt(S.peBanked.care)}</span></div>`:''}
+    <div class="tline rule total" style="animation-delay:.65s"><span class="lab">${esc(S.peName)} nets</span><span class="amt ${totalPE>=0?'pos':'neg'}">${fmt(totalPE)}</span></div>
+    ${totalPE>0?`<div class="tline sub" style="animation-delay:.7s"><span class="lab">Return on the $3.1M</span><span class="amt gld">+${roiPct}%</span></div>`:''}
+    ${S.pcps.map((p,i)=>`<div class="tline ${i===0?'rule':''}" style="animation-delay:${(0.75+i*0.1).toFixed(2)}s"><span class="lab">${esc(p.name)} nets</span><span class="amt ${p.cum>=0?'pos':'neg'}">${fmt(p.cum)}</span></div>`).join('')}
+    <span class="stamp ${totalPE>=0?'win':'lose'}" style="animation-delay:1.2s">${totalPE>=0?'The house wins':'A rare upset'}</span>
+  </div>
+  <div class="card">
+    <div class="kicker">Debrief — why the table tilts</div>
+    <h2>What you just <em>played</em>.</h2>
+    <div class="lesson"><div class="lt">The house always wins</div>
+      <p>The fund earns from gain share when the ACO succeeds — and from fees, recap dividends, and FFS skim when it doesn't. In the source model, $3.1M in becomes ~$28M out over six years: roughly a 900% return before counting the fees.</p></div>
+    <div class="lesson"><div class="lt">Opportunity cost is the silent line item</div>
+      <p>Even in winning years, an $80K bonus can be smaller than the ~$86K a PCP loses to unpaid, non-billable VBC work per 18-month cycle. A positive check can still be a net loss.</p></div>
+    <div class="lesson"><div class="lt">Paper savings vs. real savings</div>
+      <p>RAF/HCC coding raises <i>measured</i> savings without changing patient care. Guess which one gets prioritized when the board is controlled by the funder.</p></div>
+    <div class="lesson"><div class="lt">Tiering shifts risk downhill</div>
+      <p>PCPs with poorer, sicker panels get labeled \u201Clow performers\u201D and moved to worse contracts — socioeconomics dressed up as performance.</p></div>
+    <div class="lesson"><div class="lt">The consolidation paradox</div>
+      <p>Surviving VBC requires scale; scale gives the network leverage to raise commercial fee-for-service rates. Value-based care can end up increasing total cost of care.</p></div>
+    ${anyPos?`<p><b>${esc(best.name)}</b> finished best among the physicians${best.cum>0?' — usually by protecting clinic time and organizing pushback early':''}. Try a replay where the PCPs coordinate from Year 1.</p>`
+    :`<p>No physician finished in the black. That's not a bug in the game — it's the thesis. Replay and see if collective pushback from Year 1 changes the tape.</p>`}
+    <div style="height:14px"></div>
+    <button class="btn-felt" onclick="S=null;render()">Deal a new term sheet</button>
+  </div>`;
+}
+
+function esc(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+render();
+</script>
+</body>
+</html>
