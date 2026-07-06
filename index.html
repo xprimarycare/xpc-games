@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XPC GAMES</title>
+<style>
+  :root{
+    --ink:#f2ead9;
+    --blood:#e33d3d;
+    --money:#3ddc84;
+    --gold:#ffd24a;
+    --panel:#12101d;
+    --bg:#0a0812;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{min-height:100%;}
+  body{
+    background:
+      radial-gradient(circle at 50% -10%, #2b1440 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:"Courier New", ui-monospace, monospace;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    min-height:100vh;
+    padding:48px 16px 40px;
+    position:relative;
+    overflow-x:hidden;
+  }
+  /* CRT scanlines */
+  body::after{
+    content:"";
+    position:fixed; inset:0;
+    pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,.025) 0 1px, transparent 1px 3px);
+    z-index:99;
+  }
+  header{ text-align:center; margin-bottom:8px; }
+  h1{
+    font-size:clamp(38px, 8vw, 72px);
+    letter-spacing:4px;
+    color:var(--gold);
+    text-shadow:0 0 18px rgba(255,210,74,.35), 4px 4px 0 #000;
+    animation:flick 3.2s infinite;
+  }
+  @keyframes flick{ 0%,97%,100%{opacity:1;} 98%{opacity:.7;} 99%{opacity:.9;} }
+  .tag{
+    margin-top:10px;
+    font-size:clamp(11px,2.4vw,14px);
+    color:#b9aed6;
+    letter-spacing:1px;
+  }
+  .insert{
+    margin:18px 0 34px;
+    font-size:12px;
+    color:var(--ink);
+    animation:blink 1s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{opacity:0;} }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+    gap:22px;
+    width:min(880px, 100%);
+  }
+  .card{
+    display:block;
+    text-decoration:none;
+    color:var(--ink);
+    background:rgba(18,14,29,.9);
+    border:3px solid #2a2440;
+    border-radius:10px;
+    padding:22px 22px 24px;
+    position:relative;
+    transition:transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  .card:hover{
+    transform:translateY(-4px);
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  .card .badge{
+    font-size:10px; letter-spacing:1px;
+    color:#8f86ad; text-transform:uppercase;
+  }
+  .card h2{
+    font-size:clamp(20px,4vw,28px);
+    margin:6px 0 10px;
+    line-height:1.1;
+  }
+  .card p{ font-size:13px; line-height:1.5; color:#c7bfe0; }
+  .card .play{
+    display:inline-block;
+    margin-top:16px;
+    font-weight:bold;
+    font-size:13px;
+    letter-spacing:1px;
+    padding:8px 14px;
+    border-radius:6px;
+    border:2px solid currentColor;
+  }
+  /* Moral Kombat card */
+  .mk{ border-color:#4a2436; }
+  .mk:hover{ border-color:var(--blood); box-shadow:0 12px 40px rgba(227,61,61,.25); }
+  .mk h2{ color:var(--blood); text-shadow:2px 2px 0 #000; }
+  .mk .play{ color:var(--blood); }
+  /* Gain Share card */
+  .gs{ border-color:#1f4a37; }
+  .gs:hover{ border-color:var(--money); box-shadow:0 12px 40px rgba(61,220,132,.22); }
+  .gs h2{ color:var(--money); text-shadow:2px 2px 0 #000; }
+  .gs .play{ color:var(--money); }
+
+  footer{
+    margin-top:40px;
+    font-size:10px;
+    color:#5c547a;
+    text-align:center;
+    line-height:1.6;
+    max-width:620px;
+  }
+  footer a{ color:#7d739e; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>XPC&nbsp;GAMES</h1>
+    <div class="tag">HEALTHCARE, BUT MAKE IT AN ARCADE</div>
+    <div class="insert">▶ INSERT COIN — SELECT A GAME ◀</div>
+  </header>
+
+  <main class="grid">
+    <a class="card mk" href="moral-kombat.html">
+      <div class="badge">1P · Fighting</div>
+      <h2>MORAL KOMBAT</h2>
+      <p>Primary Care vs Private Equity. Two out of three rounds for the soul (and spreadsheet) of medicine. Land a FATALITY — ethical or fiduciary.</p>
+      <span class="play">PLAY ▶</span>
+    </a>
+
+    <a class="card gs" href="gain-share.html">
+      <div class="badge">Simulation · Strategy</div>
+      <h2>GAIN SHARE</h2>
+      <p>An interactive Value-Based Care simulation. Follow the money through the ACO and see who actually comes out ahead. Inspired by the work of Sudeep Bansal, MD at PCP Lens.</p>
+      <span class="play">PLAY ▶</span>
+    </a>
+  </main>
+
+  <footer>
+    A small collection of browser games. Moral Kombat is a parody and is not affiliated with the official franchise.
+    Gain Share is based on the work of <a href="https://www.pcplens.com/p/vbc-and-pe-a-match-made-in-dc">Sudeep Bansal, MD at PCP Lens</a>.
+  </footer>
+</body>
+</html>

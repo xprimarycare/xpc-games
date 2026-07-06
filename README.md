@@ -1,5 +1,11 @@
-# vbc-game
+# xpc-games
 
-Built based on the transcript from [this talk](https://www.youtube.com/watch?v=M7ccG0-3neU) by Sudeep Bansal, MD, MS at PCP Lens.
+A small collection of browser games.
 
-Related reading: ["VBC & PE: A Match Made in DC"](https://www.pcplens.com/p/vbc-and-pe-a-match-made-in-dc) by Sudeep Bansal, MD, MS.
+## Gain Share
+
+An interactive Value-Based Care simulation, built based on the work of [Sudeep Bansal, MD, MS](https://substack.com/@sudeepbansal) at PCP Lens. See his [talk](https://www.youtube.com/watch?v=M7ccG0-3neU) and the related article ["VBC & PE: A Match Made in DC"](https://www.pcplens.com/p/vbc-and-pe-a-match-made-in-dc).
+
+## Moral Kombat
+
+Just a fun, Mortal Kombat–inspired game — loosely based on real-life observations. Not affiliated with the official franchise.
