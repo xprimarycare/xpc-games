@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MORAL KOMBAT: Primary Care vs Private Equity</title>
+<style>
+  :root{
+    --ink:#f2ead9;
+    --blood:#e33d3d;
+    --money:#3ddc84;
+    --gold:#ffd24a;
+    --panel:#12101d;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background:#0a0812;
+    color:var(--ink);
+    font-family:"Courier New", ui-monospace, monospace;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  #wrap{
+    position:relative;
+    width:min(960px, 98vw);
+  }
+  canvas{
+    display:block;
+    width:100%;
+    height:auto;
+    image-rendering:pixelated;
+    border:4px solid #2a2440;
+    border-radius:6px;
+    background:#0a0812;
+    box-shadow:0 0 60px rgba(120,80,255,.15), inset 0 0 80px rgba(0,0,0,.6);
+  }
+  /* CRT scanlines */
+  #wrap::after{
+    content:"";
+    position:absolute; inset:4px;
+    pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(255,255,255,.03) 0 1px, transparent 1px 3px);
+    border-radius:4px;
+  }
+  #controlsBar{
+    width:min(960px, 98vw);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:8px 4px;
+    font-size:11px;
+    color:#8f86ad;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  #controlsBar b{color:var(--ink);}
+  #touch{
+    display:none;
+    width:min(960px,98vw);
+    justify-content:space-between;
+    padding:10px 4px;
+    gap:8px;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  .tgroup{display:flex; gap:8px;}
+  .tbtn{
+    background:var(--panel);
+    border:2px solid #3a3260;
+    color:var(--ink);
+    border-radius:10px;
+    width:58px; height:58px;
+    font-family:inherit;
+    font-size:11px;
+    font-weight:bold;
+    display:flex; align-items:center; justify-content:center;
+    text-align:center;
+    touch-action:none;
+  }
+  .tbtn:active{background:#2a2350;}
+  @media (pointer:coarse){ #touch{display:flex;} }
+  footer{
+    margin-top:8px;
+    font-size:10px;
+    color:#5c547a;
+    text-align:center;
+    padding-bottom:16px;
+  }
+</style>
+</head>
+<body>
+
+<div id="controlsBar">
+  <span><b>MOVE</b> A/D &nbsp; <b>JUMP</b> W &nbsp; <b>BLOCK</b> S &nbsp; <b>JAB</b> J &nbsp; <b>HEAVY</b> K &nbsp; <b>SPECIAL</b> L (needs meter)</span>
+  <span><b>P</b> pause &nbsp; <b>M</b> sound &nbsp; <b>ENTER</b> start</span>
+</div>
+
+<div id="wrap"><canvas id="game" width="960" height="480"></canvas></div>
+
+<div id="touch">
+  <div class="tgroup">
+    <button class="tbtn" data-k="a">◀</button>
+    <button class="tbtn" data-k="d">▶</button>
+    <button class="tbtn" data-k="w">JUMP</button>
+  </div>
+  <div class="tgroup">
+    <button class="tbtn" data-k="s">BLOCK</button>
+    <button class="tbtn" data-k="j">JAB</button>
+    <button class="tbtn" data-k="k">HEAVY</button>
+    <button class="tbtn" data-k="l">SPEC</button>
+    <button class="tbtn" data-k="Enter">START</button>
+  </div>
+</div>
+
+<footer>No physicians were financially injured in the making of this game. Portfolio values may go down as well as up.</footer>
+
+<script>
+"use strict";
+const cvs = document.getElementById('game');
+const ctx = cvs.getContext('2d');
+const W = cvs.width, H = cvs.height;
+const FLOOR = H - 70;
+
+/* ---------------- Sound (tiny synth, toggleable) ---------------- */
+let soundOn = true, actx = null;
+function beep(freq, dur=0.08, type='square', vol=0.05, slide=0){
+  if(!soundOn) return;
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq+slide), actx.currentTime+dur);
+    g.gain.value = vol;
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime+dur);
+  }catch(e){}
+}
+const sfx = {
+  hit:   ()=>{beep(160,0.09,'square',0.06,-80);},
+  heavy: ()=>{beep(90,0.16,'sawtooth',0.08,-50);},
+  block: ()=>{beep(600,0.05,'triangle',0.04);},
+  spec:  ()=>{beep(220,0.25,'sawtooth',0.07,300);},
+  ko:    ()=>{beep(300,0.5,'sawtooth',0.09,-260);},
+  ui:    ()=>{beep(880,0.06,'square',0.04);},
+};
+
+/* ---------------- Flavor text ---------------- */
+// Damage dealt TO the doctor = MORAL INJURY
+const moralInjuryLines = [
+  "PRIOR AUTH DENIED: 'NOT MEDICALLY NECESSARY'",
+  "YOUR PANEL JUST GREW BY 400 PATIENTS",
+  "15-MIN VISITS, 45-MIN DOCUMENTATION",
+  "MANDATORY WELLNESS MODULE ASSIGNED",
+  "NEW METRIC: SMILES PER RVU",
+  "INBOX +73 MESSAGES (ALL URGENT)",
+  "YOUR MA WAS 'RIGHT-SIZED'",
+  "PIZZA PARTY IN LIEU OF RAISE",
+  "EHR UPDATE: NOW WITH MORE CLICKS",
+  "'JUST SEE ONE MORE PATIENT'",
+  "PYXIS IS OUT OF EVERYTHING",
+  "CODING QUERY: PLEASE ADDEND x12",
+];
+// Damage dealt TO the PE exec = FINANCIAL INJURY
+const financialInjuryLines = [
+  "DEBT COVENANT BREACHED",
+  "CLASS ACTION FILED",
+  "PHYSICIANS UNIONIZED",
+  "FTC OPENS INQUIRY",
+  "CLAWBACK ACTIVATED",
+  "EBITDA WAS 'ADJUSTED' (DOWN)",
+  "STAR RATING: ½ STAR",
+  "ANCHOR TENANT WENT DPC",
+  "SURPRISE BILLING BAN ENFORCED",
+  "LP CALLS: 'EXPLAIN THE MULTIPLE'",
+  "GOODWILL IMPAIRMENT: $2.1B",
+  "TURNOVER HIT 94%",
+];
+
+const banter = [
+  ['"I trained 11 years for this."', '"I have an Excel model that says otherwise."'],
+  ['"Patients aren\'t widgets."', '"Correct. Widgets have better margins."'],
+  ['"First, do no harm."', '"First, do no EBITDA dilution."'],
+];
+
+/* ---------------- Fighter definitions ---------------- */
+const DOC = {
+  id:'doc', name:'DR. GOODCARE, MD',
+  sub:'FAMILY MEDICINE · 11 YEARS OF TRAINING · 4 HOURS OF SLEEP',
+  barLabel:'MORAL RESERVE',
+  meterLabel:'CAFFEINE',
+  injuryWord:'MORAL INJURY',
+  injuryColor:'#e33d3d',
+  lines:moralInjuryLines, // lines shown when DOC takes damage
+  attacks:{
+    light:{name:'PRIOR AUTH APPEAL', dmg:6,  range:78,  dur:280,  cd:340,  meterGain:12},
+    heavy:{name:'EVIDENCE-BASED UPPERCUT', dmg:13, range:88, dur:430, cd:820, meterGain:20, launch:true},
+    special:{name:'CONTINUITY-OF-CARE COMBO', dmg:24, range:150, dur:700, cd:1400}
+  },
+  fatality:{
+    name:'DIRECT PRIMARY CARE EXODUS',
+    lines:['DR. GOODCARE OPENS A DPC CLINIC ACROSS THE STREET.',
+           'EVERY PATIENT FOLLOWS. SO DOES THE OFFICE PLANT.',
+           'THE PORTFOLIO COMPANY IS NOW A VAPE SHOP.']
+  }
+};
+const PE = {
+  id:'pe', name:'CHAD ROLLUP III',
+  sub:'MANAGING PARTNER · SYNERGY CAPITAL · "PASSIONATE ABOUT HEALTHCARE"',
+  barLabel:'PORTFOLIO VALUE',
+  meterLabel:'LEVERAGE',
+  injuryWord:'FINANCIAL INJURY',
+  injuryColor:'#3ddc84',
+  lines:financialInjuryLines, // lines shown when PE takes damage
+  attacks:{
+    light:{name:'FEE EXTRACTION JAB', dmg:6, range:78, dur:280, cd:340, meterGain:12},
+    heavy:{name:'STAFFING CUT SLASH', dmg:13, range:88, dur:430, cd:820, meterGain:20, launch:true},
+    special:{name:'CONSULTANT SWARM', dmg:24, range:150, dur:700, cd:1400}
+  },
+  fatality:{
+    name:'THE ROLL-UP',
+    lines:['DR. GOODCARE IS ACQUIRED, REBRANDED, AND SYNERGIZED.',
+           'NOW A "CARE DELIVERY UNIT" AT MEGAHEALTH ONE™.',
+           'BADGE PHOTO MANDATORY. SMILE OPTIONAL. JOY DEPRECATED.']
+  }
+};
+
+/* ---------------- Input ---------------- */
+const keys = {};
+window.addEventListener('keydown', e=>{
+  if(['KeyA','KeyD','KeyW','KeyS','KeyJ','KeyK','KeyL','Enter','KeyP','KeyM'].includes(e.code)) e.preventDefault();
+  keys[e.key.toLowerCase()] = true;
+  if(e.key==='Enter') keys['enter']=true;
+  if(e.key.toLowerCase()==='p' && game.scene==='fight'){ game.paused=!game.paused; sfx.ui(); }
+  if(e.key.toLowerCase()==='m'){ soundOn=!soundOn; toast(soundOn?'SOUND ON':'SOUND OFF'); }
+});
+window.addEventListener('keyup', e=>{
+  keys[e.key.toLowerCase()] = false;
+  if(e.key==='Enter') keys['enter']=false;
+});
+// Touch buttons
+document.querySelectorAll('.tbtn').forEach(b=>{
+  const k = b.dataset.k==='Enter' ? 'enter' : b.dataset.k;
+  const on = ev=>{ev.preventDefault(); keys[k]=true;};
+  const off= ev=>{ev.preventDefault(); keys[k]=false;};
+  b.addEventListener('touchstart',on); b.addEventListener('touchend',off);
+  b.addEventListener('mousedown',on);  b.addEventListener('mouseup',off);
+});
+
+/* ---------------- Game state ---------------- */
+const game = {
+  scene:'title',    // title -> intro -> fight -> roundEnd -> finish -> fatality -> victory
+  paused:false,
+  round:1,
+  wins:{doc:0, pe:0},
+  timer:60,
+  sceneT:0,
+  announce:null,    // {text, sub, t, life, big}
+  popups:[],        // floating damage text
+  tickers:[],       // flavor text ribbons
+  shake:0,
+  fatalityLine:0,
+  winner:null,
+  flawless:false,
+};
+let toastMsg = null;
+function toast(t){ toastMsg = {t, life:1200, born:performance.now()}; }
+
+function announce(text, sub='', life=1400, big=true){
+  game.announce = {text, sub, born:performance.now(), life, big};
+  sfx.ui();
+}
+function popup(x, y, text, color, big=false){
+  game.popups.push({x, y, text, color, vy:-0.045, life: big?1500:1050, born:performance.now(), big});
+}
+function ticker(text, color){
+  game.tickers.push({text, color, born:performance.now(), life:2600});
+}
+
+/* ---------------- Fighter class ---------------- */
+function makeFighter(def, x, facing, isAI){
+  return {
+    def, x, y:FLOOR, vy:0, facing, isAI,
+    hp:100, meter:isAI?20:35,
+    state:'idle',           // idle walk jump attack block hitstun ko
+    attackKind:null, attackStart:0, attackHitDone:false,
+    cooldownUntil:0,
+    hitstunUntil:0,
+    aiNext:0, aiMove:0,
+    dizzy:false,
+    w:46,
+  };
+}
+let p1, p2;
+function resetFighters(){
+  p1 = makeFighter(DOC, 220, 1, false);
+  p2 = makeFighter(PE, W-220, -1, true);
+}
+
+/* ---------------- Combat ---------------- */
+function now(){ return performance.now(); }
+
+function tryAttack(f, kind){
+  const t = now();
+  if(f.state==='attack' || f.state==='hitstun' || f.state==='ko') return;
+  if(t < f.cooldownUntil) return;
+  const atk = f.def.attacks[kind];
+  if(kind==='special'){
+    if(f.meter < 100){ if(!f.isAI) toast('SPECIAL NEEDS FULL '+f.def.meterLabel+' METER'); return; }
+    f.meter = 0;
+    sfx.spec();
+    announce(atk.name+'!', '', 900, false);
+  }
+  f.state='attack'; f.attackKind=kind; f.attackStart=t; f.attackHitDone=false;
+  f.cooldownUntil = t + atk.cd;
+}
+
+function applyHit(attacker, victim, atk){
+  const blocked = (victim.state==='block');
+  let dmg = atk.dmg;
+  if(blocked){ dmg = Math.max(1, Math.round(dmg*0.2)); sfx.block(); }
+  else { atk.dmg>=13 ? sfx.heavy() : sfx.hit(); }
+  victim.hp = Math.max(0, victim.hp - dmg);
+  if(!blocked){
+    victim.state='hitstun';
+    victim.hitstunUntil = now() + (atk.dmg>=20? 520 : 300);
+    victim.x += (attacker.facing) * (atk.dmg>=20? 46 : 26);
+    if(atk.launch){ victim.vy = -7; victim.y -= 1; }
+    game.shake = Math.min(14, 4 + dmg*0.5);
+  }else{
+    victim.x += attacker.facing * 10;
+  }
+  victim.x = Math.max(60, Math.min(W-60, victim.x));
+  if(attacker.meter<100 && atk.meterGain) attacker.meter = Math.min(100, attacker.meter + atk.meterGain);
+  if(victim.meter<100) victim.meter = Math.min(100, victim.meter + 6); // getting hit builds resolve/leverage
+
+  // Damage popup + flavor
+  const word = blocked ? 'CHIP '+victim.def.injuryWord : victim.def.injuryWord;
+  popup(victim.x, victim.y-140, '-'+dmg+' '+word, victim.def.injuryColor, dmg>=13);
+  if(!blocked && Math.random()<0.85){
+    const lines = victim.def.lines;
+    ticker(lines[Math.floor(Math.random()*lines.length)], victim.def.injuryColor);
+  }
+  if(victim.hp<=0) startFinish(attacker, victim);
+}
+
+function updateAttack(f, opp){
+  const atk = f.def.attacks[f.attackKind];
+  const t = now() - f.attackStart;
+  // active frames: middle third of the attack
+  if(!f.attackHitDone && t > atk.dur*0.35 && t < atk.dur*0.8){
+    const dist = Math.abs(f.x - opp.x);
+    const inFront = (opp.x - f.x)*f.facing > 0;
+    if(inFront && dist < atk.range + 20 && opp.state!=='ko'){
+      f.attackHitDone = true;
+      applyHit(f, opp, atk);
+    }
+  }
+  if(t >= atk.dur) { f.state='idle'; f.attackKind=null; }
+}
+
+/* ---------------- AI ---------------- */
+function aiThink(f, opp, dt){
+  const t = now();
+  if(f.state==='hitstun'||f.state==='ko'||f.state==='attack') return;
+  const dist = Math.abs(f.x - opp.x);
+  f.facing = opp.x > f.x ? 1 : -1;
+
+  if(t > f.aiNext){
+    f.aiNext = t + 180 + Math.random()*260;
+    const r = Math.random();
+    if(dist > 110){
+      f.aiMove = f.facing; // approach
+      if(r<0.06 && f.meter>=100) tryAttack(f,'special');
+    } else {
+      f.aiMove = 0;
+      if(opp.state==='attack' && r<0.38){ f.state='block'; f.aiMove=0; }
+      else if(f.meter>=100 && r<0.30) tryAttack(f,'special');
+      else if(r<0.45) tryAttack(f,'light');
+      else if(r<0.70) tryAttack(f,'heavy');
+      else if(r<0.80){ f.aiMove = -f.facing; } // retreat, coward
+    }
+  }
+  if(f.state==='block' && Math.random()<0.02) f.state='idle';
+  if(f.state!=='block'){
+    if(f.aiMove!==0){ f.x += f.aiMove * 0.16 * dt; f.state = (f.y>=FLOOR)?'walk':f.state; }
+    else if(f.state==='walk') f.state='idle';
+  }
+  f.x = Math.max(60, Math.min(W-60, f.x));
+}
+
+/* ---------------- Player control ---------------- */
+function playerControl(f, dt){
+  if(f.state==='hitstun'||f.state==='ko') return;
+  const t = now();
+  if(f.state!=='attack'){
+    if(keys['s'] && f.y>=FLOOR){ f.state='block'; }
+    else {
+      if(f.state==='block') f.state='idle';
+      let mv = 0;
+      if(keys['a']) mv -= 1;
+      if(keys['d']) mv += 1;
+      if(mv!==0){ f.x += mv * 0.20 * dt; if(f.y>=FLOOR) f.state='walk'; }
+      else if(f.state==='walk') f.state='idle';
+      if(keys['w'] && f.y>=FLOOR){ f.vy = -9.5; sfx.ui(); }
+    }
+  }
+  if(keys['j']) tryAttack(f,'light');
+  if(keys['k']) tryAttack(f,'heavy');
+  if(keys['l']) tryAttack(f,'special');
+  f.x = Math.max(60, Math.min(W-60, f.x));
+  // face opponent
+  f.facing = p2.x > f.x ? 1 : -1;
+}
+
+/* ---------------- Physics ---------------- */
+function physics(f, dt){
+  if(f.y < FLOOR || f.vy < 0){
+    f.vy += 0.55 * (dt/16);
+    f.y += f.vy * (dt/16);
+    if(f.y >= FLOOR){ f.y = FLOOR; f.vy = 0; }
+  }
+  if(f.state==='hitstun' && now() > f.hitstunUntil) f.state='idle';
+}
+
+/* ---------------- Round / match flow ---------------- */
+function startRound(){
+  resetFighters();
+  game.timer = 60;
+  game.scene = 'fight';
+  game.paused = false;
+  const b = banter[(game.round-1)%banter.length];
+  announce('ROUND '+game.round, '', 1200);
+  setTimeout(()=>{ if(game.scene==='fight') announce('FIGHT!', '', 800); }, 1200);
+  ticker('DOC: '+b[0], '#9ecbff');
+  setTimeout(()=>ticker('PE: '+b[1], '#ffd24a'), 1300);
+}
+
+function startFinish(winner, loser){
+  game.scene = 'finish';
+  game.sceneT = now();
+  game.winner = winner;
+  game.flawless = (winner.hp===100);
+  loser.state='ko';
+  sfx.ko();
+  announce('FINISH '+(loser.def.id==='pe'?'HIM':'HER')+'!', 'PRESS SPECIAL (L) TO EXECUTE '+winner.def.fatality.name, 999999);
+}
+
+function doFatality(){
+  game.scene='fatality';
+  game.sceneT=now();
+  game.fatalityLine=0;
+  sfx.spec();
+  game.wins[game.winner.def.id]++;
+}
+
+function endFatality(){
+  if(game.wins[game.winner.def.id] >= 2){
+    game.scene='victory';
+    game.sceneT=now();
+  } else {
+    game.round++;
+    startRound();
+  }
+}
+
+/* ---------------- Drawing helpers ---------------- */
+function px(n){ return Math.round(n); }
+function text(str, x, y, size, color, align='center', bold=true){
+  ctx.fillStyle = color;
+  ctx.font = (bold?'bold ':'')+size+'px "Courier New", monospace';
+  ctx.textAlign = align;
+  ctx.fillText(str, px(x), px(y));
+}
+function outlineText(str, x, y, size, color, align='center'){
+  ctx.font = 'bold '+size+'px "Courier New", monospace';
+  ctx.textAlign = align;
+  ctx.lineWidth = Math.max(3, size/8);
+  ctx.strokeStyle = '#0a0812';
+  ctx.strokeText(str, px(x), px(y));
+  ctx.fillStyle = color;
+  ctx.fillText(str, px(x), px(y));
+}
+
+/* ---------------- Background ---------------- */
+function drawBackground(t){
+  // sky gradient
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#171034'); g.addColorStop(0.6,'#2b1440'); g.addColorStop(1,'#0e0a18');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // moon
+  ctx.fillStyle='#f6efd8'; ctx.beginPath(); ctx.arc(W*0.52, 74, 26, 0, 7); ctx.fill();
+  ctx.fillStyle='#171034'; ctx.beginPath(); ctx.arc(W*0.52+10, 68, 22, 0, 7); ctx.fill();
+
+  // LEFT: community clinic
+  ctx.fillStyle='#241d3d';
+  ctx.fillRect(40, 190, 240, FLOOR-190);
+  ctx.fillStyle='#2f2750';
+  ctx.fillRect(60, 160, 200, 34);
+  ctx.fillStyle='#e33d3d';
+  ctx.fillRect(150, 120, 14, 46); ctx.fillRect(134, 136, 46, 14); // cross
+  text('COMMUNITY CLINIC', 160, 182, 11, '#c7bfe0');
+  text('(PARKING VALIDATED)', 160, 214, 8, '#7d739e');
+  for(let r=0;r<4;r++)for(let c=0;c<5;c++){
+    ctx.fillStyle = ((r*5+c+Math.floor(t/900))%4===0)?'#ffd24a':'#161129';
+    ctx.fillRect(64+c*44, 236+r*36, 26, 20);
+  }
+
+  // RIGHT: glass tower
+  ctx.fillStyle='#1c2340';
+  ctx.fillRect(W-300, 90, 250, FLOOR-90);
+  for(let r=0;r<9;r++)for(let c=0;c<6;c++){
+    ctx.fillStyle = ((r+c)%2===0)?'#27305a':'#1a2038';
+    ctx.fillRect(W-292+c*40, 100+r*32, 34, 26);
+  }
+  ctx.fillStyle='#3ddc84';
+  text('$', W-175, 82, 34, '#3ddc84');
+  text('SYNERGY CAPITAL TOWER', W-175, 130, 10, '#9be8bf');
+  text('(VALET ONLY)', W-175, 146, 8, '#5f8f77');
+
+  // arena floor
+  ctx.fillStyle='#181226'; ctx.fillRect(0, FLOOR, W, H-FLOOR);
+  ctx.fillStyle='#221a38'; ctx.fillRect(0, FLOOR, W, 6);
+  ctx.fillStyle='#0f0b1a';
+  for(let i=0;i<W;i+=60) ctx.fillRect(i+((Math.floor(t/2000))%2)*30, FLOOR+30, 30, 4);
+  // fight zone tape
+  ctx.fillStyle='#ffd24a';
+  text('NEGOTIATION ZONE — ENTER AT OWN RISK', W/2, FLOOR+52, 10, '#6d6248');
+}
+
+/* ---------------- Character drawing ---------------- */
+function attackProgress(f){
+  if(f.state!=='attack') return 0;
+  const atk = f.def.attacks[f.attackKind];
+  const t = (now()-f.attackStart)/atk.dur;
+  return Math.sin(Math.min(1,t)*Math.PI); // 0->1->0
+}
+
+function drawDoctor(f, t){
+  const x=f.x, y=f.y, dir=f.facing;
+  const ap = attackProgress(f);
+  const walkBob = f.state==='walk' ? Math.sin(t/90)*3 : 0;
+  const stun = f.state==='hitstun';
+  const ko = f.state==='ko';
+  ctx.save();
+  ctx.translate(x, y + walkBob);
+  if(ko){ ctx.rotate(dir*-1.35); ctx.translate(0,-16); }
+  else if(stun){ ctx.rotate(-dir*0.12); }
+  ctx.scale(dir,1);
+
+  // shadow
+  ctx.restore();
+  ctx.fillStyle='rgba(0,0,0,.45)';
+  ctx.beginPath(); ctx.ellipse(x, y+4, 34, 7, 0, 0, 7); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y+walkBob);
+  if(ko){ ctx.rotate(dir*-1.35); ctx.translate(0,-16); }
+  else if(stun){ ctx.rotate(-dir*0.12); }
+  ctx.scale(dir,1);
+
+  // legs (scrubs)
+  ctx.fillStyle='#2d7d8f';
+  const step = f.state==='walk'? Math.sin(t/90)*7 : 0;
+  ctx.fillRect(-14+step*0.4, -44, 11, 44);
+  ctx.fillRect(4-step*0.4, -44, 11, 44);
+  // sneakers
+  ctx.fillStyle='#e8e4da';
+  ctx.fillRect(-16+step*0.4, -6, 16, 6);
+  ctx.fillRect(2-step*0.4, -6, 16, 6);
+  // torso: scrub top
+  ctx.fillStyle='#35919f';
+  ctx.fillRect(-17, -96, 34, 54);
+  // white coat (open)
+  ctx.fillStyle='#efe9dc';
+  ctx.fillRect(-23, -98, 10, 60);
+  ctx.fillRect(13, -98, 10, 60);
+  ctx.fillRect(-23, -98, 46, 8);
+  // coat flutter when attacking
+  if(ap>0.2){ ctx.fillRect(-27-ap*4, -92, 6, 46); }
+  // badge
+  ctx.fillStyle='#ffd24a'; ctx.fillRect(9, -84, 8, 11);
+  // stethoscope
+  ctx.strokeStyle='#22282e'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(0, -84, 14, 0.4, 2.6); ctx.stroke();
+  ctx.fillStyle='#22282e'; ctx.beginPath(); ctx.arc(10,-72,4,0,7); ctx.fill();
+  // arms
+  ctx.fillStyle='#efe9dc';
+  const punch = ap * 34;
+  if(f.state==='block'){
+    ctx.fillRect(8, -92, 10, 30); ctx.fillRect(14, -90, 12, 10);
+    ctx.fillStyle='#c9bfa8'; text('🛡', 0, -110, 14, '#c9bfa8');
+  } else if(f.state==='attack' && f.attackKind==='heavy'){
+    ctx.save(); ctx.translate(14,-70); ctx.rotate(-ap*1.5);
+    ctx.fillRect(0,-8,14+punch*0.7,10); ctx.fillStyle='#e9c49a'; ctx.fillRect(12+punch*0.7,-9,9,12); ctx.restore();
+    ctx.fillStyle='#efe9dc'; ctx.fillRect(-20,-90,10,26);
+  } else {
+    ctx.fillRect(12, -90, 12+punch, 10);       // front arm
+    ctx.fillStyle='#e9c49a'; ctx.fillRect(22+punch, -91, 9, 12); // fist
+    ctx.fillStyle='#efe9dc'; ctx.fillRect(-21, -90, 10, 26);      // back arm
+  }
+  // special: clipboard projectile-ish flare
+  if(f.state==='attack' && f.attackKind==='special'){
+    ctx.fillStyle='#ffd24a';
+    ctx.fillRect(30+ap*70, -92, 18, 24);
+    ctx.fillStyle='#0a0812'; ctx.fillRect(33+ap*70, -88, 12, 3); ctx.fillRect(33+ap*70, -82, 12, 3);
+  }
+  // head
+  ctx.fillStyle='#e9c49a'; ctx.fillRect(-11, -126, 24, 26);
+  // hair (tired)
+  ctx.fillStyle='#4a3826'; ctx.fillRect(-11, -128, 24, 8);
+  // eye + bag under eye
+  ctx.fillStyle='#0a0812'; ctx.fillRect(4, -116, 4, 4);
+  ctx.fillStyle='#b58ea0'; ctx.fillRect(3, -110, 6, 2);
+  // coffee cup floating near when meter full
+  if(f.meter>=100 && !ko){ text('☕', -34, -120, 16, '#fff'); }
+  ctx.restore();
+}
+
+function drawPE(f, t){
+  const x=f.x, y=f.y, dir=f.facing;
+  const ap = attackProgress(f);
+  const walkBob = f.state==='walk' ? Math.sin(t/90)*3 : 0;
+  const stun = f.state==='hitstun';
+  const ko = f.state==='ko';
+  ctx.fillStyle='rgba(0,0,0,.45)';
+  ctx.beginPath(); ctx.ellipse(x, y+4, 34, 7, 0, 0, 7); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y+walkBob);
+  if(ko){ ctx.rotate(dir*1.35); ctx.translate(0,-16); }
+  else if(stun){ ctx.rotate(dir*0.12); }
+  ctx.scale(dir,1);
+
+  // legs: suit pants
+  ctx.fillStyle='#1f2a4a';
+  const step = f.state==='walk'? Math.sin(t/90)*7 : 0;
+  ctx.fillRect(-14+step*0.4, -44, 11, 44);
+  ctx.fillRect(4-step*0.4, -44, 11, 44);
+  // loafers
+  ctx.fillStyle='#5a3a22';
+  ctx.fillRect(-16+step*0.4, -6, 16, 6);
+  ctx.fillRect(2-step*0.4, -6, 16, 6);
+  // torso: suit jacket
+  ctx.fillStyle='#25315a';
+  ctx.fillRect(-19, -98, 38, 56);
+  // shirt + power tie
+  ctx.fillStyle='#f4f2ec'; ctx.fillRect(-5, -96, 12, 40);
+  ctx.fillStyle='#d0342c'; ctx.fillRect(-2, -96, 6, 36);
+  // pocket square
+  ctx.fillStyle='#ffd24a'; ctx.fillRect(9, -92, 7, 5);
+  // vest (patagonia energy)
+  ctx.fillStyle='#31406e'; ctx.fillRect(-19, -98, 6, 56); ctx.fillRect(13, -98, 6, 56);
+  // arms
+  const punch = ap*34;
+  ctx.fillStyle='#25315a';
+  if(f.state==='block'){
+    // blocks with a briefcase
+    ctx.fillRect(8,-92,10,28);
+    ctx.fillStyle='#5a3a22'; ctx.fillRect(16,-96,16,26);
+    ctx.fillStyle='#ffd24a'; ctx.fillRect(22,-88,4,4);
+  } else if(f.state==='attack' && f.attackKind==='heavy'){
+    ctx.save(); ctx.translate(14,-70); ctx.rotate(-ap*1.5);
+    ctx.fillRect(0,-8,14+punch*0.7,10);
+    ctx.fillStyle='#f0c39a'; ctx.fillRect(12+punch*0.7,-9,9,12); ctx.restore();
+    ctx.fillStyle='#25315a'; ctx.fillRect(-21,-90,10,26);
+  } else {
+    ctx.fillRect(12,-90,12+punch,10);
+    ctx.fillStyle='#f0c39a'; ctx.fillRect(22+punch,-91,9,12);
+    ctx.fillStyle='#25315a'; ctx.fillRect(-21,-90,10,26);
+  }
+  // special: dollar swarm
+  if(f.state==='attack' && f.attackKind==='special'){
+    for(let i=0;i<4;i++){
+      text('$', 30+ap*70+i*14, -100+((i%2)*16), 16, '#3ddc84');
+    }
+  }
+  // head
+  ctx.fillStyle='#f0c39a'; ctx.fillRect(-11, -126, 24, 26);
+  // slick hair
+  ctx.fillStyle='#22160c'; ctx.fillRect(-11, -130, 24, 9); ctx.fillRect(-11,-126,4,10);
+  // sunglasses at night, naturally
+  ctx.fillStyle='#0a0812'; ctx.fillRect(-6, -117, 18, 6);
+  // smug smile
+  ctx.fillStyle='#a06a4a'; ctx.fillRect(1, -106, 8, 2);
+  // bluetooth earpiece
+  ctx.fillStyle='#8fa2ff'; ctx.fillRect(-12, -116, 3, 8);
+  if(f.meter>=100 && !ko){ text('📈', -34, -120, 16, '#fff'); }
+  ctx.restore();
+}
+
+/* ---------------- HUD ---------------- */
+function drawBar(x, y, wdt, hp, flip, color, label, name){
+  ctx.fillStyle='#0a0812';
+  ctx.fillRect(x-3, y-3, wdt+6, 26);
+  ctx.fillStyle='#241d3d';
+  ctx.fillRect(x, y, wdt, 20);
+  const fillW = wdt * hp/100;
+  const grad = ctx.createLinearGradient(x,0,x+wdt,0);
+  grad.addColorStop(0, color); grad.addColorStop(1, '#fff3');
+  ctx.fillStyle = hp>30 ? color : '#e33d3d';
+  if(hp<=30 && Math.floor(now()/200)%2===0) ctx.fillStyle='#ff7a7a';
+  if(flip) ctx.fillRect(x+wdt-fillW, y, fillW, 20);
+  else ctx.fillRect(x, y, fillW, 20);
+  text(label, flip? x+wdt : x, y-8, 10, '#b9aed6', flip?'right':'left');
+  text(name, flip? x+wdt : x, y+36, 12, '#f2ead9', flip?'right':'left');
+}
+function drawMeter(x, y, wdt, val, flip, label){
+  ctx.fillStyle='#241d3d'; ctx.fillRect(x, y, wdt, 8);
+  const fw = wdt*val/100;
+  ctx.fillStyle = val>=100 ? '#ffd24a' : '#8f86ad';
+  if(val>=100 && Math.floor(now()/150)%2===0) ctx.fillStyle='#fff';
+  if(flip) ctx.fillRect(x+wdt-fw, y, fw, 8);
+  else ctx.fillRect(x, y, fw, 8);
+  text(label+(val>=100?' READY!':''), flip? x+wdt : x, y+20, 9, val>=100?'#ffd24a':'#6b6288', flip?'right':'left');
+}
+function drawHUD(){
+  drawBar(30, 26, 360, p1.hp, false, '#e33d3d', p1.def.barLabel, p1.def.name);
+  drawBar(W-390, 26, 360, p2.hp, true, '#3ddc84', p2.def.barLabel, p2.def.name);
+  drawMeter(30, 70, 200, p1.meter, false, p1.def.meterLabel);
+  drawMeter(W-230, 70, 200, p2.meter, true, p2.def.meterLabel);
+  // timer
+  ctx.fillStyle='#0a0812'; ctx.fillRect(W/2-34, 8, 68, 44);
+  outlineText(Math.ceil(game.timer), W/2, 42, 30, game.timer<=10?'#e33d3d':'#f2ead9');
+  // round pips
+  for(let i=0;i<2;i++){
+    ctx.fillStyle = i<game.wins.doc? '#e33d3d':'#3a3260';
+    ctx.beginPath(); ctx.arc(W/2-52-i*18, 30, 6, 0, 7); ctx.fill();
+    ctx.fillStyle = i<game.wins.pe? '#3ddc84':'#3a3260';
+    ctx.beginPath(); ctx.arc(W/2+52+i*18, 30, 6, 0, 7); ctx.fill();
+  }
+}
+
+/* ---------------- Popups / tickers / announce ---------------- */
+function drawPopups(){
+  const t = now();
+  game.popups = game.popups.filter(p => t-p.born < p.life);
+  for(const p of game.popups){
+    const age = t-p.born;
+    const a = 1 - age/p.life;
+    ctx.globalAlpha = a;
+    outlineText(p.text, p.x, p.y + p.vy*age, p.big?22:14, p.color);
+    ctx.globalAlpha = 1;
+  }
+}
+function drawTickers(){
+  const t = now();
+  game.tickers = game.tickers.filter(k=> t-k.born < k.life);
+  let yy = 120;
+  for(const k of game.tickers){
+    const a = Math.min(1, (k.life-(t-k.born))/500);
+    ctx.globalAlpha = a;
+    ctx.fillStyle='rgba(10,8,18,.75)';
+    ctx.font='bold 12px "Courier New", monospace';
+    const tw = ctx.measureText(k.text).width;
+    ctx.fillRect(W/2-tw/2-10, yy-12, tw+20, 18);
+    text(k.text, W/2, yy, 12, k.color);
+    ctx.globalAlpha=1;
+    yy += 24;
+  }
+}
+function drawAnnounce(){
+  if(!game.announce) return;
+  const t = now();
+  const a = game.announce;
+  if(a.life<999998 && t-a.born > a.life){ game.announce=null; return; }
+  const pulse = 1 + Math.sin((t-a.born)/120)*0.03;
+  ctx.save();
+  ctx.translate(W/2, H/2 - 40);
+  ctx.scale(pulse, pulse);
+  outlineText(a.text, 0, 0, a.big?44:24, '#ffd24a');
+  if(a.sub) outlineText(a.sub, 0, 30, 13, '#f2ead9');
+  ctx.restore();
+}
+
+/* ---------------- Scenes ---------------- */
+function sceneTitle(t){
+  drawBackground(t);
+  ctx.fillStyle='rgba(5,3,12,.62)'; ctx.fillRect(0,0,W,H);
+  const bounce = Math.sin(t/400)*6;
+  outlineText('MORAL KOMBAT', W/2, 130+bounce, 58, '#e33d3d');
+  outlineText('PRIMARY CARE vs PRIVATE EQUITY', W/2, 172+bounce, 20, '#ffd24a');
+  text('A 2-out-of-3 rounds struggle for the soul (and spreadsheet) of medicine', W/2, 215, 12, '#b9aed6');
+
+  // fighter cards
+  ctx.fillStyle='rgba(20,14,38,.9)';
+  ctx.fillRect(90, 245, 340, 130); ctx.fillRect(W-430, 245, 340, 130);
+  text('YOU PLAY', 260, 268, 10, '#8f86ad');
+  text(DOC.name, 260, 290, 16, '#e33d3d');
+  text('JAB: PRIOR AUTH APPEAL', 260, 314, 10, '#f2ead9');
+  text('HEAVY: EVIDENCE-BASED UPPERCUT', 260, 330, 10, '#f2ead9');
+  text('SPECIAL: CONTINUITY-OF-CARE COMBO', 260, 346, 10, '#ffd24a');
+  text('WEAKNESS: EMPATHY, INBOX', 260, 366, 9, '#8f86ad');
+
+  text('CPU PLAYS', W-260, 268, 10, '#8f86ad');
+  text(PE.name, W-260, 290, 16, '#3ddc84');
+  text('JAB: FEE EXTRACTION JAB', W-260, 314, 10, '#f2ead9');
+  text('HEAVY: STAFFING CUT SLASH', W-260, 330, 10, '#f2ead9');
+  text('SPECIAL: CONSULTANT SWARM', W-260, 346, 10, '#ffd24a');
+  text('WEAKNESS: TRANSPARENCY, AUDITS', W-260, 366, 9, '#8f86ad');
+
+  if(Math.floor(t/500)%2===0) outlineText('PRESS ENTER / START TO FIGHT', W/2, 424, 18, '#f2ead9');
+  text('Damage dealt to the doctor is MORAL INJURY. Damage dealt to the suit is FINANCIAL INJURY.', W/2, 452, 11, '#8f86ad');
+
+  if(keys['enter']){ keys['enter']=false; game.round=1; game.wins={doc:0,pe:0}; startRound(); }
+}
+
+function sceneFight(t, dt){
+  if(!game.paused){
+    playerControl(p1, dt);
+    aiThink(p2, p1, dt);
+    physics(p1, dt); physics(p2, dt);
+    if(p1.state==='attack') updateAttack(p1, p2);
+    if(p2.state==='attack') updateAttack(p2, p1);
+    game.timer -= dt/1000;
+    if(game.timer<=0 && game.scene==='fight'){
+      // time out: whoever has more HP wins the round via attrition
+      game.timer = 0;
+      const winner = p1.hp>=p2.hp ? p1 : p2;
+      const loser = winner===p1? p2:p1;
+      startFinish(winner, loser);
+      announce('TIME! DEATH BY A THOUSAND MEETINGS', 'PRESS SPECIAL (L) TO FINISH', 999999);
+    }
+  }
+  // camera shake
+  const sh = game.shake;
+  if(sh>0){ ctx.save(); ctx.translate((Math.random()-0.5)*sh, (Math.random()-0.5)*sh); game.shake*=0.86; if(game.shake<0.5)game.shake=0; }
+  drawBackground(t);
+  drawDoctor(p1, t);
+  drawPE(p2, t);
+  if(sh>0) ctx.restore();
+  drawHUD();
+  drawPopups();
+  drawTickers();
+  drawAnnounce();
+  if(game.paused){
+    ctx.fillStyle='rgba(5,3,12,.6)'; ctx.fillRect(0,0,W,H);
+    outlineText('PAUSED', W/2, H/2, 40, '#ffd24a');
+    text('(the inbox continues to fill)', W/2, H/2+30, 12, '#b9aed6');
+  }
+}
+
+function sceneFinish(t, dt){
+  physics(p1, dt); physics(p2, dt);
+  drawBackground(t);
+  drawDoctor(p1, t);
+  drawPE(p2, t);
+  drawHUD();
+  drawPopups();
+  drawTickers();
+  drawAnnounce();
+  const winnerIsP1 = game.winner===p1;
+  const trigger = winnerIsP1 ? keys['l'] : (now()-game.sceneT > 1800); // AI auto-finishes
+  if(trigger){ keys['l']=false; game.announce=null; doFatality(); }
+}
+
+function sceneFatality(t){
+  drawBackground(t);
+  ctx.fillStyle='rgba(5,3,12,.85)'; ctx.fillRect(0,0,W,H);
+  const f = game.winner.def.fatality;
+  const elapsed = now()-game.sceneT;
+  const lineIdx = Math.min(f.lines.length-1, Math.floor(elapsed/1600));
+  outlineText(game.winner.def.id==='doc' ? 'FATALITY (ETHICAL)' : 'FATALITY (FIDUCIARY)', W/2, 120, 40,
+    game.winner.def.id==='doc' ? '#e33d3d' : '#3ddc84');
+  outlineText(f.name, W/2, 165, 22, '#ffd24a');
+  for(let i=0;i<=lineIdx;i++){
+    text(f.lines[i], W/2, 230+i*34, 14, '#f2ead9');
+  }
+  if(game.flawless) outlineText('FLAWLESS ADVOCACY!', W/2, 360, 22, '#ffd24a');
+  const doneAt = f.lines.length*1600 + 900;
+  if(elapsed > doneAt){
+    if(Math.floor(t/400)%2===0) text('PRESS ENTER TO CONTINUE', W/2, 420, 14, '#b9aed6');
+    if(keys['enter']){ keys['enter']=false; endFatality(); }
+  }
+}
+
+function sceneVictory(t){
+  drawBackground(t);
+  ctx.fillStyle='rgba(5,3,12,.8)'; ctx.fillRect(0,0,W,H);
+  const docWon = game.wins.doc>=2;
+  outlineText(docWon? 'PRIMARY CARE WINS' : 'PRIVATE EQUITY WINS', W/2, 130, 44, docWon? '#e33d3d':'#3ddc84');
+  if(docWon){
+    text('Continuity of care: restored.', W/2, 190, 14, '#f2ead9');
+    text('Panel size: humane. Inbox: still full, but it\'s YOUR inbox.', W/2, 214, 14, '#f2ead9');
+    text('Chad Rollup III pivots to disrupting veterinary dentistry.', W/2, 238, 14, '#f2ead9');
+    outlineText('ACHIEVEMENT: JOY IN MEDICINE (+1)', W/2, 290, 16, '#ffd24a');
+  } else {
+    text('Your clinic is now "CareHub Powered by Synergy™".', W/2, 190, 14, '#f2ead9');
+    text('Visit length reduced to 7 minutes. Stethoscopes now leased.', W/2, 214, 14, '#f2ead9');
+    text('But the doctor will return. The doctor ALWAYS returns.', W/2, 238, 14, '#f2ead9');
+    outlineText('MORAL INJURY: MAXIMUM. RESOLVE: LOADING…', W/2, 290, 16, '#e33d3d');
+  }
+  if(Math.floor(t/450)%2===0) text('PRESS ENTER FOR A REMATCH (MANDATORY QUARTERLY REVIEW)', W/2, 380, 13, '#b9aed6');
+  if(keys['enter']){ keys['enter']=false; game.scene='title'; }
+}
+
+/* ---------------- Toast ---------------- */
+function drawToast(){
+  if(!toastMsg) return;
+  if(now()-toastMsg.born > toastMsg.life){ toastMsg=null; return; }
+  ctx.fillStyle='rgba(10,8,18,.85)';
+  ctx.font='bold 12px "Courier New", monospace';
+  const tw = ctx.measureText(toastMsg.t).width;
+  ctx.fillRect(W/2-tw/2-12, H-40, tw+24, 22);
+  text(toastMsg.t, W/2, H-25, 12, '#ffd24a');
+}
+
+/* ---------------- Main loop ---------------- */
+let last = performance.now();
+function loop(t){
+  const dt = Math.min(40, t-last); last = t;
+  ctx.clearRect(0,0,W,H);
+  switch(game.scene){
+    case 'title':    sceneTitle(t); break;
+    case 'fight':    sceneFight(t, dt); break;
+    case 'finish':   sceneFinish(t, dt); break;
+    case 'fatality': sceneFatality(t); break;
+    case 'victory':  sceneVictory(t); break;
+  }
+  drawToast();
+  requestAnimationFrame(loop);
+}
+resetFighters();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
