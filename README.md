@@ -9,3 +9,7 @@ An interactive Value-Based Care simulation, built based on the work of [Sudeep B
 ## Moral Kombat
 
 Just a fun, Mortal Kombat–inspired game — loosely based on real-life observations. Not affiliated with the official franchise.
+
+## Sonic the PCP
+
+A fun, Sonic-inspired platformer set in the "Consolidation Zone" — loosely based on real-life observations. Not affiliated with the official franchise.
