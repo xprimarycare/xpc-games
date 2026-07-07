@@ -13,3 +13,7 @@ Just a fun, Mortal Kombat–inspired game — loosely based on real-life observa
 ## Sonic the PCP
 
 A fun, Sonic-inspired platformer set in the "Consolidation Zone" — loosely based on real-life observations. Not affiliated with the official franchise.
+
+## Inbox Invaders
+
+A fun, Space Invaders–inspired shooter — "Attack of the Payer Fleet," loosely based on real-life observations. Not affiliated with the official franchise.

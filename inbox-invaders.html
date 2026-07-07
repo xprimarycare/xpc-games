@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INBOX INVADERS — Attack of the Payer Fleet</title>
+<style>
+  :root{ --ink:#e8f4e9; --gold:#ffd24a; --green:#4dff88; --panel:#0d1410; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:#050a06; color:var(--ink);
+    font-family:"Courier New", ui-monospace, monospace;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; overflow-x:hidden;
+  }
+  #bar{width:min(920px,98vw); display:flex; justify-content:space-between; padding:8px 4px; font-size:11px; color:#6f8f77; flex-wrap:wrap; gap:6px;}
+  #bar b{color:var(--ink);}
+  #wrap{position:relative; width:min(920px,98vw);}
+  canvas{
+    display:block; width:100%; height:auto; image-rendering:pixelated;
+    border:4px solid #1a3322; border-radius:6px; background:#050a06;
+    box-shadow:0 0 60px rgba(77,255,136,.12), inset 0 0 90px rgba(0,0,0,.6);
+  }
+  #wrap::after{content:""; position:absolute; inset:4px; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(120,255,160,.035) 0 1px, transparent 1px 3px); border-radius:4px;}
+  #touch{display:none; width:min(920px,98vw); justify-content:space-between; padding:10px 4px; gap:8px; user-select:none; -webkit-user-select:none;}
+  .tg{display:flex; gap:8px;}
+  .tb{background:var(--panel); border:2px solid #234a30; color:var(--ink); border-radius:10px;
+    width:66px; height:66px; font-family:inherit; font-size:11px; font-weight:bold;
+    display:flex; align-items:center; justify-content:center; touch-action:none;}
+  .tb:active{background:#123020;}
+  @media (pointer:coarse){ #touch{display:flex;} }
+  footer{margin-top:8px; font-size:10px; color:#3f5c48; text-align:center; padding-bottom:16px;}
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <span><b>MOVE</b> A/D or ◀▶ &nbsp; <b>FIRE APPEAL</b> SPACE &nbsp; <b>P</b> pause &nbsp; <b>M</b> sound &nbsp; <b>ENTER</b> start</span>
+  <span>Episode 3 of the PCP vs PE saga</span>
+</div>
+
+<div id="wrap"><canvas id="game" width="920" height="640"></canvas></div>
+
+<div id="touch">
+  <div class="tg">
+    <button class="tb" data-k="a">◀</button>
+    <button class="tb" data-k="d">▶</button>
+  </div>
+  <div class="tg">
+    <button class="tb" data-k=" ">FIRE</button>
+    <button class="tb" data-k="enter">START</button>
+  </div>
+</div>
+
+<footer>Appeals fired in this game are processed instantly, which is how you know it's fiction.</footer>
+
+<script>
+"use strict";
+const cvs=document.getElementById('game'), ctx=cvs.getContext('2d');
+const W=cvs.width, H=cvs.height;
+const PLAYER_Y=H-70;
+
+/* ---------- sound ---------- */
+let soundOn=true, actx=null;
+function beep(f,d=0.08,type='square',v=0.05,slide=0){
+  if(!soundOn)return;
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(),g=actx.createGain();
+    o.type=type;o.frequency.value=f;
+    if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),actx.currentTime+d);
+    g.gain.value=v;g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+d);
+    o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+d);
+  }catch(e){}
+}
+const sfx={
+  shoot:()=>beep(900,0.06,'square',0.04,-500),
+  kill:()=>beep(220,0.09,'square',0.05,-120),
+  ufo:()=>beep(700,0.12,'triangle',0.04,120),
+  hit:()=>beep(140,0.3,'sawtooth',0.08,-90),
+  power:()=>{beep(660,0.08,'square',0.05);setTimeout(()=>beep(990,0.1,'square',0.05),80);},
+  step:(n)=>beep(90+n*18,0.05,'square',0.035),
+  boss:()=>beep(70,0.35,'sawtooth',0.08,-30),
+  win:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.18,'square',0.06),i*140));},
+};
+
+/* ---------- input ---------- */
+const keys={};
+window.addEventListener('keydown',e=>{
+  if(['KeyA','KeyD','Space','Enter','KeyP','KeyM','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+  const k=e.key.toLowerCase(); keys[k]=true;
+  if(e.code==='Space')keys[' ']=true;
+  if(k==='arrowleft')keys['a']=true; if(k==='arrowright')keys['d']=true;
+  if(k==='p'&&game.scene==='play')game.paused=!game.paused;
+  if(k==='m'){soundOn=!soundOn;toast(soundOn?'SOUND ON':'SOUND OFF');}
+});
+window.addEventListener('keyup',e=>{
+  const k=e.key.toLowerCase(); keys[k]=false;
+  if(e.code==='Space')keys[' ']=false;
+  if(k==='arrowleft')keys['a']=false; if(k==='arrowright')keys['d']=false;
+});
+document.querySelectorAll('.tb').forEach(b=>{
+  const k=b.dataset.k;
+  const on=ev=>{ev.preventDefault();keys[k]=true;};
+  const off=ev=>{ev.preventDefault();keys[k]=false;};
+  b.addEventListener('touchstart',on);b.addEventListener('touchend',off);
+  b.addEventListener('mousedown',on);b.addEventListener('mouseup',off);
+});
+
+/* ---------- flavor ---------- */
+const killLines={
+  fax:["FAX MACHINE: UNPLUGGED","PAPER JAM: PERMANENT","FAX SENT TO THE SHADOW REALM"],
+  pa:["PRIOR AUTH: APPROVED (MIRACLE)","PA OVERTURNED ON PEER-TO-PEER","'PEER' WAS A PODIATRIST. WON ANYWAY."],
+  denial:["DENIAL: DENIED","CLAIM RESUBMITTED WITH FEELING","MEDICAL NECESSITY: PROVEN"],
+  mba:["MBA PIVOTED TO WELLNESS APPS","SYNERGY: DE-LEVERAGED","CONSULTANT BILLED FOR OWN DEFEAT"],
+};
+const waveIntros=[
+  "WAVE 1: THE FAX FLOTILLA",
+  "WAVE 2: PRIOR AUTH ARMADA",
+  "WAVE 3: THE DENIAL SQUADRON",
+  "WAVE 4: MBA STRIKE FORCE",
+  "FINAL WAVE: MEGAHEALTH ONE™ MOTHERSHIP",
+];
+const overtimeIntros=[
+  "OVERTIME WAVE %n: THEY OUTSOURCED MORE FAXES",
+  "OVERTIME WAVE %n: NEW PAYER JUST DROPPED",
+  "OVERTIME WAVE %n: Q%q EARNINGS MUST GROW",
+];
+
+/* ---------- game state ---------- */
+const game={scene:'title',paused:false,wave:1,score:0,lives:3,shake:0,
+  fleet:null,stepTimer:0,stepN:0,ufo:null,ufoNext:0,boss:null,over:false,
+  msg:null,waveClearAt:0};
+let toastMsg=null;
+function toast(t){toastMsg={t,born:performance.now(),life:1400};}
+let popups=[],tickers=[];
+function popup(x,y,txt,color,big=false){popups.push({x,y,txt,color,born:performance.now(),life:big?1400:900,big});}
+function ticker(txt,color){tickers.push({txt,color,born:performance.now(),life:2400});}
+
+/* ---------- player ---------- */
+const P={x:W/2,cd:0,inv:0,rapidUntil:0,doubleUntil:0,dead:false,deadAt:0};
+let bullets=[],ebullets=[],powerups=[],particles=[];
+
+/* ---------- bunkers: BOUNDARIES / LUNCH BREAK / WEEKENDS ---------- */
+const CELL=7;
+let bunkers=[];
+function buildBunkers(){
+  bunkers=[];
+  const labels=['BOUNDARIES','LUNCH BREAK','WEEKENDS'];
+  const bw=16,bh=8; // cells
+  const totalW=bw*CELL;
+  const xs=[W*0.22-totalW/2, W*0.5-totalW/2, W*0.78-totalW/2];
+  for(let i=0;i<3;i++){
+    const cells=[];
+    for(let r=0;r<bh;r++)for(let c=0;c<bw;c++){
+      // arch shape: skip bottom-middle notch and top corners
+      if(r>=5&&c>=5&&c<=10)continue;
+      if(r===0&&(c<2||c>=bw-2))continue;
+      cells.push({c,r,alive:true});
+    }
+    bunkers.push({x:xs[i],y:H-160,cells,label:labels[i]});
+  }
+}
+function damageBunkerAt(x,y,radius=1){
+  for(const b of bunkers){
+    for(const cell of b.cells){
+      if(!cell.alive)continue;
+      const cx=b.x+cell.c*CELL+CELL/2, cy=b.y+cell.r*CELL+CELL/2;
+      if(Math.abs(cx-x)<CELL*radius+4&&Math.abs(cy-y)<CELL*radius+4){
+        cell.alive=false;
+      }
+    }
+  }
+}
+function bunkerHit(x,y){ // returns true if a live cell is at point
+  for(const b of bunkers){
+    for(const cell of b.cells){
+      if(!cell.alive)continue;
+      const cx=b.x+cell.c*CELL, cy=b.y+cell.r*CELL;
+      if(x>=cx&&x<cx+CELL&&y>=cy&&y<cy+CELL)return true;
+    }
+  }
+  return false;
+}
+
+/* ---------- fleet ---------- */
+const TYPES={
+  fax:   {pts:10,color:'#9fb3a6',label:'FAX'},
+  pa:    {pts:20,color:'#ffd24a',label:'PA'},
+  denial:{pts:30,color:'#ff6b6b',label:'DENIED'},
+  mba:   {pts:40,color:'#7db4ff',label:'MBA'},
+};
+function fleetLayout(wave){
+  // rows top->bottom. later waves add rows/speed.
+  if(wave===1)return['pa','fax','fax','fax'];
+  if(wave===2)return['denial','pa','pa','fax','fax'];
+  if(wave===3)return['mba','denial','denial','pa','fax'];
+  if(wave>=4)return['mba','mba','denial','pa','pa','fax'];
+  return ['fax'];
+}
+function buildFleet(wave){
+  const rows=fleetLayout(Math.min(wave,4));
+  const cols=10;
+  const inv=[];
+  const startY=90;
+  for(let r=0;r<rows.length;r++){
+    for(let c=0;c<cols;c++){
+      inv.push({type:rows[r],c,r,x:110+c*68,y:startY+r*52,alive:true,anim:0});
+    }
+  }
+  const baseInterval=Math.max(220, 820-(wave-1)*90);
+  game.fleet={inv,dir:1,dropPending:false,interval:baseInterval,fireChance:0.0022+wave*0.0009};
+}
+
+/* ---------- boss ---------- */
+function buildBoss(){
+  game.boss={x:W/2,y:110,vx:2.2,hp:26,maxhp:26,t:0,phase:'drift',flash:0,
+    beamX:0,beamT:0};
+  ticker('MEGAHEALTH ONE™ — "WE PUT THE I IN TEAM-BASED CARE"','#3ddc84');
+  sfx.boss();
+}
+
+/* ---------- waves ---------- */
+function startWave(w){
+  game.wave=w;
+  bullets=[];ebullets=[];powerups=[];
+  game.ufo=null; game.ufoNext=performance.now()+9000+Math.random()*8000;
+  game.stepTimer=0;game.stepN=0;
+  if(w===5){game.fleet=null;buildBoss();}
+  else{
+    game.boss=null;buildFleet(w);
+    if(w<=4)ticker(waveIntros[w-1],'#ffd24a');
+    else{
+      let s=overtimeIntros[(w)%overtimeIntros.length];
+      ticker(s.replace('%n',w-5+1).replace('%q',1+((w)%4)),'#ffd24a');
+      buildFleet(4+Math.min(3,w-5)); // keep density, gets faster via interval calc using w
+      game.fleet.interval=Math.max(150,700-(w-1)*60);
+      game.fleet.fireChance=0.003+w*0.001;
+    }
+  }
+}
+function newGame(){
+  game.score=0;game.lives=3;game.over=false;game.scene='play';game.paused=false;
+  P.x=W/2;P.cd=0;P.inv=2000;P.rapidUntil=0;P.doubleUntil=0;P.dead=false;
+  popups=[];tickers=[];particles=[];
+  buildBunkers();
+  startWave(1);
+  ticker('DEFEND THE CLINIC. PROTECT YOUR '+'BOUNDARIES.','#bfe6ff');
+}
+
+/* ---------- shooting ---------- */
+function fire(){
+  const t=performance.now();
+  if(t<P.cd||P.dead)return;
+  const rapid=t<P.rapidUntil;
+  P.cd=t+(rapid?170:340);
+  sfx.shoot();
+  if(t<P.doubleUntil){
+    bullets.push({x:P.x-12,y:PLAYER_Y-34});
+    bullets.push({x:P.x+12,y:PLAYER_Y-34});
+  }else bullets.push({x:P.x,y:PLAYER_Y-34});
+}
+function enemyShoot(x,y,vx=0,vy=4.2){ ebullets.push({x,y,vx,vy}); }
+
+/* ---------- powerups ---------- */
+const POWER=[
+  {k:'coffee',label:'☕ RAPID APPEALS',color:'#ffd24a'},
+  {k:'scribe',label:'📝 SCRIBE (DOUBLE SHOT)',color:'#7dff9b'},
+  {k:'pto',label:'🏖 PTO (+1 RESILIENCE)',color:'#7db4ff'},
+];
+function maybeDrop(x,y){
+  if(Math.random()<0.10){
+    const r=Math.random();
+    const p=r<0.45?POWER[0]:r<0.9?POWER[1]:POWER[2];
+    powerups.push({x,y,vy:1.6,p});
+  }
+}
+
+/* ---------- explosions ---------- */
+function boom(x,y,color,n=10){
+  for(let i=0;i<n;i++)particles.push({x,y,vx:Math.random()*6-3,vy:Math.random()*6-3,color,born:performance.now(),life:500+Math.random()*300});
+}
+
+/* ---------- player hit ---------- */
+function hurtPlayer(){
+  if(P.inv>0||P.dead)return;
+  sfx.hit();game.shake=12;
+  game.lives--;
+  boom(P.x,PLAYER_Y-20,'#ff6b6b',18);
+  ticker(['MANDATORY RESILIENCE TRAINING ASSIGNED','YOUR PANEL GREW WHILE YOU WERE DOWN','HR SENT A SURVEY ABOUT THE EXPLOSION'][Math.floor(Math.random()*3)],'#ff8c6b');
+  if(game.lives<=0){
+    P.dead=true;P.deadAt=performance.now();
+    setTimeout(()=>{game.scene='gameover';},1400);
+  }else P.inv=2200;
+}
+
+/* ---------- update ---------- */
+function update(dt){
+  const t=performance.now();
+  if(P.inv>0)P.inv-=dt;
+
+  /* player move */
+  if(!P.dead){
+    if(keys['a'])P.x-=0.34*dt;
+    if(keys['d'])P.x+=0.34*dt;
+    P.x=Math.max(34,Math.min(W-34,P.x));
+    if(keys[' '])fire();
+  }
+
+  /* bullets */
+  for(const b of bullets)b.y-=0.62*dt;
+  bullets=bullets.filter(b=>b.y>40);
+  for(const b of ebullets){b.y+=b.vy*(dt/16);b.x+=(b.vx||0)*(dt/16);}
+  ebullets=ebullets.filter(b=>b.y<H-20&&b.x>0&&b.x<W);
+
+  /* bullets vs bunkers */
+  for(const b of bullets){ if(bunkerHit(b.x,b.y)){damageBunkerAt(b.x,b.y,1);b.y=-99;} }
+  bullets=bullets.filter(b=>b.y>0);
+  for(const b of ebullets){ if(bunkerHit(b.x,b.y)){damageBunkerAt(b.x,b.y,1.4);b.y=9999;} }
+  ebullets=ebullets.filter(b=>b.y<H);
+
+  /* enemy bullets vs player */
+  for(const b of ebullets){
+    if(Math.abs(b.x-P.x)<22&&Math.abs(b.y-(PLAYER_Y-16))<20){b.y=9999;hurtPlayer();}
+  }
+  ebullets=ebullets.filter(b=>b.y<H);
+
+  /* powerups */
+  for(const p of powerups){p.y+=p.vy*(dt/16);
+    if(Math.abs(p.x-P.x)<26&&Math.abs(p.y-(PLAYER_Y-14))<24){
+      p.y=9999;sfx.power();popup(P.x,PLAYER_Y-60,p.p.label,p.p.color,true);
+      if(p.p.k==='coffee')P.rapidUntil=t+6000;
+      if(p.p.k==='scribe')P.doubleUntil=t+8000;
+      if(p.p.k==='pto'){game.lives=Math.min(5,game.lives+1);}
+    }
+  }
+  powerups=powerups.filter(p=>p.y<H);
+
+  /* particles */
+  particles=particles.filter(p=>t-p.born<p.life);
+  for(const p of particles){p.x+=p.vx*(dt/16);p.y+=p.vy*(dt/16);p.vy+=0.1*(dt/16);}
+
+  /* UFO: Chad's golden parachute run */
+  if(!game.boss&&!game.ufo&&t>game.ufoNext){
+    const fromLeft=Math.random()<0.5;
+    game.ufo={x:fromLeft?-60:W+60,vx:fromLeft?3.2:-3.2,y:62};
+    sfx.ufo();
+  }
+  if(game.ufo){
+    game.ufo.x+=game.ufo.vx*(dt/16);
+    if(Math.floor(t/400)%3===0)sfx.ufo();
+    if(game.ufo.x<-80||game.ufo.x>W+80){game.ufo=null;game.ufoNext=t+10000+Math.random()*9000;}
+  }
+
+  /* fleet march */
+  if(game.fleet){
+    const F=game.fleet;
+    const alive=F.inv.filter(i=>i.alive);
+    if(alive.length===0){
+      if(!game.waveClearAt){game.waveClearAt=t;
+        popup(W/2,H/2,'WAVE CLEAR — INBOX BRIEFLY AT ZERO','#7dff9b',true);}
+      if(t-game.waveClearAt>1600){game.waveClearAt=0;startWave(game.wave+1);}
+    }else{
+      // speed scales with casualties, classic style
+      const frac=alive.length/F.inv.length;
+      const interval=Math.max(90,F.interval*frac+60);
+      game.stepTimer+=dt;
+      if(game.stepTimer>interval){
+        game.stepTimer=0;game.stepN++;
+        sfx.step(game.stepN%4);
+        let minX=1e9,maxX=-1e9;
+        for(const i of alive){minX=Math.min(minX,i.x);maxX=Math.max(maxX,i.x);}
+        if(F.dropPending){
+          for(const i of F.inv)i.y+=22;
+          F.dropPending=false;F.dir*=-1;
+        }else{
+          const step=14;
+          if((F.dir>0&&maxX+step>W-50)||(F.dir<0&&minX-step<50))F.dropPending=true;
+          else for(const i of F.inv)i.x+=F.dir*step;
+        }
+        for(const i of F.inv)i.anim=1-i.anim;
+      }
+      // enemy fire: bottom-most invader in random column
+      if(Math.random()<F.fireChance*dt){
+        const cols={};
+        for(const i of alive){if(!cols[i.c]||i.y>cols[i.c].y)cols[i.c]=i;}
+        const arr=Object.values(cols);
+        const shooter=arr[Math.floor(Math.random()*arr.length)];
+        if(shooter)enemyShoot(shooter.x,shooter.y+18);
+      }
+      // invasion check
+      for(const i of alive){
+        if(i.y>H-190){game.scene='gameover';game.over='invaded';break;}
+      }
+    }
+  }
+
+  /* bullets vs fleet / ufo */
+  for(const b of bullets){
+    if(game.fleet){
+      for(const i of game.fleet.inv){
+        if(!i.alive)continue;
+        if(Math.abs(b.x-i.x)<24&&Math.abs(b.y-i.y)<18){
+          i.alive=false;b.y=-99;sfx.kill();
+          const T=TYPES[i.type];
+          game.score+=T.pts;
+          boom(i.x,i.y,T.color);
+          if(Math.random()<0.3){
+            const lines=killLines[i.type];
+            popup(i.x,i.y-16,lines[Math.floor(Math.random()*lines.length)],T.color);
+          } else popup(i.x,i.y-10,'+'+T.pts,T.color);
+          maybeDrop(i.x,i.y);
+          break;
+        }
+      }
+    }
+    if(game.ufo&&Math.abs(b.x-game.ufo.x)<34&&Math.abs(b.y-game.ufo.y)<20){
+      b.y=-99;game.score+=250;sfx.power();
+      boom(game.ufo.x,game.ufo.y,'#ffd24a',20);
+      popup(game.ufo.x,game.ufo.y,'GOLDEN PARACHUTE INTERCEPTED +250','#ffd24a',true);
+      game.ufo=null;game.ufoNext=t+12000+Math.random()*9000;
+    }
+  }
+  bullets=bullets.filter(b=>b.y>0);
+
+  /* boss */
+  if(game.boss)updateBoss(dt,t);
+}
+
+function updateBoss(dt,t){
+  const B=game.boss;
+  if(B.flash>0)B.flash-=dt;
+  B.t+=dt;
+  // movement
+  B.x+=B.vx*(dt/16);
+  if(B.x<130){B.x=130;B.vx=Math.abs(B.vx);}
+  if(B.x>W-130){B.x=W-130;B.vx=-Math.abs(B.vx);}
+  // attacks
+  if(B.phase==='drift'){
+    if(Math.random()<0.02*(dt/16))enemyShoot(B.x+(Math.random()*140-70),B.y+40,0,4.6);
+    if(B.t>2600){B.t=0;B.phase=Math.random()<0.45?'spread':'beamWarn';}
+  }else if(B.phase==='spread'){
+    if(B.t<200){
+      for(let i=-2;i<=2;i++)enemyShoot(B.x,B.y+40,i*1.6,4.2);
+      sfx.boss();
+      B.t=250;
+    }
+    if(B.t>900){B.t=0;B.phase='drift';}
+  }else if(B.phase==='beamWarn'){
+    if(B.t<100){B.beamX=P.x;}
+    if(B.t>900){B.t=0;B.phase='beam';sfx.boss();}
+  }else if(B.phase==='beam'){
+    // acquisition tractor beam: vertical column
+    if(B.t<800){
+      if(Math.abs(P.x-B.beamX)<30&&!P.dead)hurtPlayer();
+      damageBunkerAt(B.beamX,H-150,1.2);
+    }
+    if(B.t>900){B.t=0;B.phase='drift';}
+  }
+  // player bullets vs boss
+  for(const b of bullets){
+    if(Math.abs(b.x-B.x)<80&&Math.abs(b.y-B.y)<34){
+      b.y=-99;B.hp--;B.flash=120;sfx.kill();game.score+=50;
+      boom(b.x,B.y+20,'#3ddc84',4);
+      if(B.hp%6===0&&B.hp>0){
+        popup(B.x,B.y-50,['SYNERGIES: QUESTIONED','EBITDA: RE-ADJUSTED','BOARD: CONCERNED','LPs: FURIOUS'][3-Math.floor(B.hp/6)]||'','#7dff9b',true);
+      }
+      if(B.hp<=0){
+        game.boss=null;sfx.win();game.score+=2000;game.shake=16;
+        boom(B.x,B.y,'#3ddc84',40);boom(B.x-60,B.y+10,'#ffd24a',25);boom(B.x+60,B.y+10,'#ff6b6b',25);
+        popup(W/2,H/2-40,'MOTHERSHIP DIVESTED +2000','#ffd24a',true);
+        setTimeout(()=>{game.scene='victory';},1800);
+      }
+    }
+  }
+  bullets=bullets.filter(b=>b.y>0);
+}
+
+/* ---------- drawing ---------- */
+function text(str,x,y,size,color,align='center',bold=true){
+  ctx.fillStyle=color;ctx.font=(bold?'bold ':'')+size+'px "Courier New", monospace';
+  ctx.textAlign=align;ctx.fillText(str,Math.round(x),Math.round(y));
+}
+function outline(str,x,y,size,color,align='center'){
+  ctx.font='bold '+size+'px "Courier New", monospace';ctx.textAlign=align;
+  ctx.lineWidth=Math.max(3,size/8);ctx.strokeStyle='#031007';
+  ctx.strokeText(str,Math.round(x),Math.round(y));
+  ctx.fillStyle=color;ctx.fillText(str,Math.round(x),Math.round(y));
+}
+function drawStars(t){
+  ctx.fillStyle='#050a06';ctx.fillRect(0,0,W,H);
+  for(let i=0;i<70;i++){
+    const x=(i*137)%W, y=(i*89)%(H-120);
+    const tw=(Math.sin(t/700+i)+1)/2;
+    ctx.fillStyle='rgba(140,255,180,'+(0.12+tw*0.25)+')';
+    ctx.fillRect(x,y,2,2);
+  }
+  // distant "market" ticker line across top of space
+  ctx.fillStyle='rgba(61,220,132,.14)';
+  ctx.font='bold 10px monospace';ctx.textAlign='left';
+  const scroll=(t*0.04)%600;
+  ctx.fillText('MGHX ▲2.1%   PAYR ▲4.7%   HOPE ▼9.3%   BRNOUT ▲▲▲   PCPX (DELISTED)',W-scroll-600,26);
+}
+function drawGroundLine(){
+  ctx.fillStyle='#123020';ctx.fillRect(0,H-34,W,34);
+  ctx.fillStyle='#1e4a30';ctx.fillRect(0,H-34,W,3);
+  text('617 COMMUNITY CLINIC — LAST INDEPENDENT PRACTICE IN THE SECTOR',W/2,H-13,9,'#4d7a5c');
+}
+function drawPlayer(t){
+  if(P.dead&&Math.floor(t/100)%2===0)return;
+  if(P.inv>0&&Math.floor(t/90)%2===0&&!P.dead)return;
+  const x=P.x,y=PLAYER_Y;
+  // rolling clinic cart turret: white-coat doc atop a mobile workstation
+  ctx.fillStyle='#2f8f7a';ctx.fillRect(x-30,y-14,60,14); // cart base
+  ctx.fillStyle='#9fb3a6';
+  ctx.beginPath();ctx.arc(x-20,y+2,5,0,7);ctx.arc(x+20,y+2,5,0,7);ctx.fill(); // wheels
+  ctx.fillStyle='#c8e6d0';ctx.fillRect(x-24,y-22,48,10); // desk
+  ctx.fillStyle='#12303a';ctx.fillRect(x-16,y-34,14,12); // monitor
+  ctx.fillStyle='#4dff88';ctx.fillRect(x-14,y-32,10,8);  // EHR glow (green = mythical usable EHR)
+  // doc
+  ctx.fillStyle='#efe9dc';ctx.fillRect(x+2,y-40,12,20);  // coat
+  ctx.fillStyle='#e9c49a';ctx.fillRect(x+3,y-50,10,10);  // head
+  ctx.fillStyle='#4a3826';ctx.fillRect(x+3,y-52,10,4);
+  // appeal launcher
+  ctx.fillStyle='#ffd24a';ctx.fillRect(x-3,y-46,6,14);
+  if(performance.now()<P.rapidUntil)text('☕',x-28,y-40,12,'#ffd24a');
+  if(performance.now()<P.doubleUntil)text('📝',x+28,y-40,12,'#7dff9b');
+}
+function drawInvader(i,t){
+  const T=TYPES[i.type];const x=i.x,y=i.y,a=i.anim;
+  if(i.type==='fax'){
+    ctx.fillStyle='#7d8f84';ctx.fillRect(x-18,y-10,36,20);
+    ctx.fillStyle='#c8d6cc';ctx.fillRect(x-12,y-16,24,8);
+    ctx.fillStyle='#e8f4e9';ctx.fillRect(x-8,y-20-(a?3:0),16,6); // paper chugging
+    ctx.fillStyle='#31463a';ctx.fillRect(x-14,y-4,8,4);ctx.fillRect(x+6,y-4,8,4);
+  }else if(i.type==='pa'){
+    ctx.fillStyle='#e8e2c8';ctx.fillRect(x-16,y-18,32,32);
+    ctx.fillStyle='#9a9070';for(let l=0;l<4;l++)ctx.fillRect(x-11,y-11+l*7,22,2);
+    ctx.save();ctx.translate(x,y+2);ctx.rotate(a?-0.2:0.2);
+    ctx.fillStyle='#d0342c';ctx.fillRect(-13,-5,26,12);
+    ctx.fillStyle='#fff';ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.fillText('DENY?',0,4);
+    ctx.restore();
+  }else if(i.type==='denial'){
+    ctx.fillStyle='#d0342c';ctx.fillRect(x-18,y-12,36,24);
+    ctx.fillStyle='#8f1f18';ctx.beginPath();ctx.moveTo(x-18,y-12);ctx.lineTo(x,y+2+(a?3:0));ctx.lineTo(x+18,y-12);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.fillText('DENIED',x,y+9);
+  }else{ // mba
+    ctx.fillStyle='#25315a';ctx.fillRect(x-14,y-8,28,20);
+    ctx.fillStyle='#f0c39a';ctx.fillRect(x-8,y-20,16,12);
+    ctx.fillStyle='#22160c';ctx.fillRect(x-8,y-23,16,5);
+    ctx.fillStyle='#0a0f1c';ctx.fillRect(x-5,y-16,10,3);
+    ctx.fillStyle='#d0342c';ctx.fillRect(x-2,y-8,4,10);
+    // jazz hands alternate (synergy gesture)
+    ctx.fillStyle='#f0c39a';
+    ctx.fillRect(x-20,y-(a?14:6),6,5);ctx.fillRect(x+14,y-(a?6:14),6,5);
+  }
+}
+function drawUFO(t){
+  const u=game.ufo;if(!u)return;
+  // Chad dangling from a golden parachute
+  ctx.fillStyle='#ffd24a';
+  ctx.beginPath();ctx.arc(u.x,u.y-14,26,Math.PI,0);ctx.fill();
+  ctx.strokeStyle='#c9a532';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(u.x-24,u.y-12);ctx.lineTo(u.x-6,u.y+12);
+  ctx.moveTo(u.x+24,u.y-12);ctx.lineTo(u.x+6,u.y+12);ctx.stroke();
+  ctx.fillStyle='#25315a';ctx.fillRect(u.x-7,u.y+10,14,14);
+  ctx.fillStyle='#f0c39a';ctx.fillRect(u.x-5,u.y+2,10,8);
+  ctx.fillStyle='#0a0f1c';ctx.fillRect(u.x-4,u.y+4,8,3);
+  text('$$$',u.x,u.y-20,10,'#8a6d1f');
+}
+function drawBoss(t){
+  const B=game.boss;if(!B)return;
+  const x=B.x,y=B.y;
+  const flash=B.flash>0&&Math.floor(t/60)%2===0;
+  // mothership: giant hospital-corp saucer
+  ctx.fillStyle=flash?'#eaffef':'#1c2340';
+  ctx.beginPath();ctx.ellipse(x,y,95,32,0,0,7);ctx.fill();
+  ctx.fillStyle=flash?'#fff':'#27305a';
+  ctx.beginPath();ctx.ellipse(x,y-18,48,22,0,0,7);ctx.fill();
+  ctx.fillStyle='#3ddc84';ctx.font='bold 13px monospace';ctx.textAlign='center';
+  ctx.fillText('MEGAHEALTH ONE™',x,y+4);
+  for(let i=0;i<6;i++){
+    ctx.fillStyle=(Math.floor(t/200+i)%3===0)?'#3ddc84':'#12303a';
+    ctx.beginPath();ctx.arc(x-70+i*28,y+18,5,0,7);ctx.fill();
+  }
+  // hp bar
+  ctx.fillStyle='#0d1f14';ctx.fillRect(x-80,y-52,160,10);
+  ctx.fillStyle='#3ddc84';ctx.fillRect(x-80,y-52,160*B.hp/B.maxhp,10);
+  text('SHAREHOLDER CONFIDENCE',x,y-58,8,'#7fd6a4');
+  // beam
+  if(B.phase==='beamWarn'){
+    ctx.fillStyle='rgba(255,210,74,.25)';ctx.fillRect(B.beamX-26,y+20,52,H-y-54);
+    text('ACQUISITION TARGETING…',B.beamX,y+64,9,'#ffd24a');
+  }
+  if(B.phase==='beam'){
+    ctx.fillStyle='rgba(61,220,132,.5)';ctx.fillRect(B.beamX-26,y+20,52,H-y-54);
+    ctx.fillStyle='rgba(255,255,255,.7)';ctx.fillRect(B.beamX-6,y+20,12,H-y-54);
+    text('TRACTOR BEAM: TERM SHEET',B.beamX,y+80,9,'#eaffef');
+  }
+}
+function drawBunkers(){
+  for(const b of bunkers){
+    ctx.fillStyle='#4dff88';
+    let any=false;
+    for(const c of b.cells){if(!c.alive)continue;any=true;
+      ctx.fillRect(b.x+c.c*CELL,b.y+c.r*CELL,CELL-1,CELL-1);}
+    text(b.label,b.x+8*CELL,b.y+8*CELL+16,9,any?'#4d7a5c':'#31463a');
+    if(!any)text('(gone)',b.x+8*CELL,b.y+8*CELL+28,8,'#31463a');
+  }
+}
+function drawShots(){
+  ctx.fillStyle='#eaffef';
+  for(const b of bullets){ctx.fillRect(b.x-2,b.y-8,4,12);
+    ctx.fillStyle='#ffd24a';ctx.fillRect(b.x-4,b.y+2,8,3);ctx.fillStyle='#eaffef';}
+  for(const b of ebullets){
+    ctx.fillStyle='#ff6b6b';ctx.fillRect(b.x-3,b.y-6,6,12);
+    ctx.fillStyle='#fff';ctx.font='bold 7px monospace';ctx.textAlign='center';
+    ctx.fillText('NO',b.x,b.y+2);
+  }
+  for(const p of powerups){
+    ctx.fillStyle='rgba(13,20,16,.9)';ctx.fillRect(p.x-14,p.y-12,28,24);
+    ctx.strokeStyle=p.p.color;ctx.lineWidth=2;ctx.strokeRect(p.x-14,p.y-12,28,24);
+    text(p.p.label.slice(0,2),p.x,p.y+5,12,p.p.color);
+  }
+  for(const p of particles){
+    const a=1-(performance.now()-p.born)/p.life;
+    ctx.globalAlpha=a;ctx.fillStyle=p.color;ctx.fillRect(p.x-2,p.y-2,4,4);ctx.globalAlpha=1;
+  }
+}
+function drawHUD(t){
+  ctx.fillStyle='rgba(3,16,7,.6)';ctx.fillRect(0,0,W,40);
+  text('SCORE',20,15,9,'#6f8f77','left');
+  outline(String(game.score),20,33,18,'#eaffef','left');
+  text('WAVE',150,15,9,'#6f8f77','left');
+  outline(String(game.wave),150,33,18,'#ffd24a','left');
+  text('RESILIENCE',W-20,15,9,'#6f8f77','right');
+  outline('♥'.repeat(Math.max(0,game.lives)),W-20,33,18,'#ff6b6b','right');
+  const msgs=[];
+  if(t<P.rapidUntil)msgs.push('RAPID APPEALS '+Math.ceil((P.rapidUntil-t)/1000));
+  if(t<P.doubleUntil)msgs.push('SCRIBE '+Math.ceil((P.doubleUntil-t)/1000));
+  if(msgs.length)text(msgs.join('  ·  '),W/2,33,11,'#7dff9b');
+}
+function drawPopups(){
+  const t=performance.now();
+  popups=popups.filter(p=>t-p.born<p.life);
+  for(const p of popups){
+    const age=t-p.born,a=1-age/p.life;
+    ctx.globalAlpha=a;outline(p.txt,p.x,p.y-age*0.04,p.big?15:11,p.color);ctx.globalAlpha=1;
+  }
+  tickers=tickers.filter(k=>t-k.born<k.life);
+  let yy=58;
+  for(const k of tickers){
+    const a=Math.min(1,(k.life-(t-k.born))/500);
+    ctx.globalAlpha=a;
+    ctx.fillStyle='rgba(3,16,7,.8)';
+    ctx.font='bold 12px "Courier New",monospace';
+    const tw=ctx.measureText(k.txt).width;
+    ctx.fillRect(W/2-tw/2-10,yy-12,tw+20,18);
+    text(k.txt,W/2,yy,12,k.color);
+    ctx.globalAlpha=1;yy+=24;
+  }
+  if(toastMsg){
+    if(t-toastMsg.born>toastMsg.life)toastMsg=null;
+    else{
+      ctx.fillStyle='rgba(3,16,7,.85)';
+      ctx.font='bold 12px "Courier New",monospace';
+      const tw=ctx.measureText(toastMsg.t).width;
+      ctx.fillRect(W/2-tw/2-12,H-58,tw+24,22);
+      text(toastMsg.t,W/2,H-43,12,'#ffd24a');
+    }
+  }
+}
+
+/* ---------- scenes ---------- */
+function sceneTitle(t){
+  drawStars(t);drawGroundLine();
+  ctx.fillStyle='rgba(3,10,6,.55)';ctx.fillRect(0,0,W,H);
+  const b=Math.sin(t/400)*5;
+  outline('INBOX INVADERS',W/2,120+b,54,'#4dff88');
+  outline('ATTACK OF THE PAYER FLEET',W/2,160+b,18,'#ffd24a');
+  text('Episode 3. Chad went to space. He took the fax machines with him.',W/2,196,12,'#c8e6d0');
+
+  ctx.fillStyle='rgba(6,20,12,.92)';ctx.fillRect(120,225,680,200);
+  text('KNOW YOUR ENEMY',W/2,250,11,'#6f8f77');
+  drawInvader({type:'fax',x:200,y:290,anim:0},t);    text('FAX FLOTILLA — 10 PTS',250,294,11,'#c8e6d0','left');
+  drawInvader({type:'pa',x:200,y:336,anim:0},t);     text('PRIOR AUTH FORMS — 20 PTS',250,340,11,'#ffd24a','left');
+  drawInvader({type:'denial',x:200,y:382,anim:0},t); text('DENIAL LETTERS — 30 PTS',250,386,11,'#ff8c8c','left');
+  drawInvader({type:'mba',x:560,y:290,anim:0},t);    text('MBA STRIKE FORCE — 40 PTS',610,294,11,'#a8ccff','left');
+  text('☁ CHAD\'S GOLDEN PARACHUTE — 250 PTS',560,340,11,'#ffd24a','left');
+  text('SHIELDS: BOUNDARIES · LUNCH · WEEKENDS',560,386,11,'#7dff9b','left');
+  text('(they erode — realistic)',560,404,9,'#6f8f77','left');
+
+  text('Survive 4 waves, then face the MEGAHEALTH ONE™ mothership.',W/2,455,12,'#c8e6d0');
+  if(Math.floor(t/500)%2===0)outline('PRESS ENTER / START',W/2,505,22,'#eaffef');
+  text('A/D move · SPACE fire appeals · powerups drop from destroyed paperwork',W/2,540,11,'#6f8f77');
+  if(keys['enter']){keys['enter']=false;newGame();}
+}
+function scenePlay(t,dt){
+  if(!game.paused)update(dt);
+  let sx=0,sy=0;
+  if(game.shake>0){sx=(Math.random()-0.5)*game.shake;sy=(Math.random()-0.5)*game.shake;game.shake*=0.85;if(game.shake<0.4)game.shake=0;}
+  ctx.save();ctx.translate(sx,sy);
+  drawStars(t);
+  if(game.fleet)for(const i of game.fleet.inv)if(i.alive)drawInvader(i,t);
+  drawUFO(t);drawBoss(t);drawBunkers();drawShots();drawPlayer(t);drawGroundLine();
+  ctx.restore();
+  drawHUD(t);drawPopups();
+  if(game.paused){
+    ctx.fillStyle='rgba(3,10,6,.6)';ctx.fillRect(0,0,W,H);
+    outline('PAUSED',W/2,H/2,40,'#ffd24a');
+    text('(the fleet is using this time to expand into dermatology)',W/2,H/2+30,12,'#c8e6d0');
+  }
+}
+function sceneVictory(t){
+  drawStars(t);drawGroundLine();
+  ctx.fillStyle='rgba(3,10,6,.7)';ctx.fillRect(0,0,W,H);
+  outline('SECTOR LIBERATED',W/2,150,46,'#4dff88');
+  text('The MegaHealth One breaks apart into 340 independent practices.',W/2,210,13,'#c8e6d0');
+  text('Each one keeps its own schedule, its own panel, and its own coffee machine.',W/2,234,13,'#c8e6d0');
+  outline('FINAL SCORE  '+game.score,W/2,290,26,'#ffd24a');
+  text('Chad was last seen pitching "Uber for Faxes" to a seed fund.',W/2,336,12,'#7fd6a4');
+  text('OVERTIME MODE: press ENTER to keep defending. The waves never stop.',W/2,376,12,'#c8e6d0');
+  text('(You can stop, though. Boundaries. That\'s the whole point.)',W/2,398,11,'#6f8f77');
+  if(Math.floor(t/450)%2===0)outline('ENTER: OVERTIME · ESC/refresh: GO HOME ON TIME',W/2,450,14,'#eaffef');
+  if(keys['enter']){keys['enter']=false;game.scene='play';buildBunkers();startWave(6);}
+}
+function sceneGameOver(t){
+  drawStars(t);
+  ctx.fillStyle='rgba(3,10,6,.8)';ctx.fillRect(0,0,W,H);
+  outline('CLINIC ACQUIRED',W/2,170,50,'#ff6b6b');
+  if(game.over==='invaded')text('The paperwork reached the front desk. It always reaches the front desk.',W/2,225,13,'#c8e6d0');
+  else text('Resilience depleted. A wellness webinar has been scheduled in your honor.',W/2,225,13,'#c8e6d0');
+  text('SCORE  '+game.score+'   ·   WAVE '+game.wave,W/2,270,16,'#ffd24a');
+  text('The invaders renamed the clinic "CareVerse Pod #7192".',W/2,315,12,'#7fd6a4');
+  if(Math.floor(t/450)%2===0)outline('PRESS ENTER TO RE-OPEN THE PRACTICE',W/2,370,16,'#eaffef');
+  if(keys['enter']){keys['enter']=false;newGame();}
+}
+
+/* ---------- main loop ---------- */
+let last=performance.now();
+function loop(t){
+  const dt=Math.min(40,t-last);last=t;
+  ctx.clearRect(0,0,W,H);
+  switch(game.scene){
+    case 'title':sceneTitle(t);break;
+    case 'play':scenePlay(t,dt);break;
+    case 'victory':sceneVictory(t);break;
+    case 'gameover':sceneGameOver(t);break;
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
