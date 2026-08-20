@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>COMPUTE OUT!!</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#080E1A;
+    --panel:#0E1728;
+    --panel-2:#152139;
+    --line:#22344F;
+    --ecg:#35E08F;
+    --spo2:#38D2E8;
+    --resp:#F2CF5B;
+    --alarm:#FF3B52;
+    --paper:#EFE7D6;
+    --paper-ink:#1C1A15;
+    --dim:#6E86A8;
+    --display:"Big Shoulders Display","Arial Narrow","Haettenschweiler",Impact,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--ink);
+    color:#DCE7F5;
+    font-family:var(--mono);
+    display:flex;align-items:center;justify-content:center;
+    padding:12px;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:99;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    opacity:.5;
+  }
+
+  .cabinet{
+    width:100%;max-width:760px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:4px;
+    box-shadow:0 0 0 6px #060A12, 0 26px 60px rgba(0,0,0,.7);
+    overflow:hidden;
+    position:relative;
+  }
+
+  /* ---------- HUD ---------- */
+  .hud{border-bottom:1px solid var(--line);background:var(--panel-2)}
+  .hud-top{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:6px 10px;font-size:10px;letter-spacing:.14em;color:var(--dim);
+    border-bottom:1px solid var(--line);
+  }
+  .hud-top b{color:var(--spo2);font-weight:500}
+  .btn-mute{
+    background:none;border:1px solid var(--line);color:var(--dim);
+    font:inherit;font-size:9px;letter-spacing:.1em;padding:2px 6px;cursor:pointer;border-radius:2px;
+  }
+  .btn-mute:hover{color:#DCE7F5;border-color:var(--dim)}
+
+  .meters{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+  .meter{background:var(--panel-2);padding:7px 10px}
+  .meter-label{
+    display:flex;justify-content:space-between;
+    font-size:9px;letter-spacing:.12em;color:var(--dim);margin-bottom:5px;
+  }
+  .bar{height:9px;background:#08101E;border:1px solid var(--line);position:relative;overflow:hidden}
+  .bar > i{
+    position:absolute;inset:0 auto 0 0;display:block;
+    transition:width .18s linear;
+  }
+  #barCred > i{background:var(--resp)}
+  #barPat > i{background:var(--spo2)}
+  .bar.low > i{background:var(--alarm)}
+
+  /* ---------- RING ---------- */
+  .ring{
+    position:relative;
+    aspect-ratio:5/4;
+    background:
+      radial-gradient(120% 90% at 50% 12%, #1B2A45 0%, #0B1425 55%, #060B15 100%);
+    overflow:hidden;
+  }
+  .ropes{position:absolute;left:0;right:0;top:0;height:44%;pointer-events:none;opacity:.5}
+  .rope{position:absolute;left:-5%;right:-5%;height:2px;
+    background:linear-gradient(90deg,rgba(44,67,99,0),#2C4363 12%,#2C4363 88%,rgba(44,67,99,0))}
+  .r1{top:14%}.r2{top:24%}.r3{top:34%}
+
+  .fighter{
+    position:absolute;left:50%;top:12%;
+    width:52%;max-width:280px;
+    transform:translateX(-50%);
+    transition:transform .12s ease-out;
+  }
+  .fighter svg{display:block;width:100%;height:auto;overflow:visible}
+  .fighter.lean-l{transform:translateX(-50%) translate(-16px,4px) rotate(-4deg)}
+  .fighter.lean-r{transform:translateX(-50%) translate(16px,4px) rotate(4deg)}
+  .fighter.lean-b{transform:translateX(-50%) translateY(10px) scale(1.03)}
+  .fighter.stunned{animation:wob .34s ease-in-out 2}
+  @keyframes wob{0%,100%{transform:translateX(-50%) rotate(0)}25%{transform:translateX(-50%) rotate(-5deg)}75%{transform:translateX(-50%) rotate(5deg)}}
+
+  .player{
+    position:absolute;left:50%;bottom:-6%;
+    width:62%;max-width:340px;
+    transform:translateX(-50%);
+    transition:transform .1s ease-out;
+    z-index:4;
+  }
+  .player svg{display:block;width:100%;height:auto}
+  .player.d-l{transform:translateX(-50%) translateX(-64px) rotate(-6deg)}
+  .player.d-r{transform:translateX(-50%) translateX(64px) rotate(6deg)}
+  .player.d-b{transform:translateX(-50%) translateY(22px) scale(.96)}
+
+  .bubble{
+    position:absolute;left:50%;top:4%;
+    transform:translateX(-50%);
+    width:min(88%,440px);
+    background:var(--paper);color:var(--paper-ink);
+    padding:9px 12px;
+    font-size:13px;line-height:1.35;
+    z-index:6;
+    box-shadow:4px 4px 0 rgba(0,0,0,.5);
+    opacity:0;transition:opacity .12s;
+  }
+  .bubble.on{opacity:1}
+  .bubble::after{
+    content:"";position:absolute;left:50%;bottom:-9px;margin-left:-8px;
+    border:9px solid transparent;border-top-color:var(--paper);border-bottom:0;
+  }
+  .bubble em{font-style:normal;color:#8A5C1F}
+
+  .tell{
+    position:absolute;top:46%;
+    font-family:var(--display);font-size:44px;line-height:1;
+    color:var(--alarm);opacity:0;z-index:5;
+    text-shadow:0 0 18px rgba(255,59,82,.55);
+  }
+  .tell.on{opacity:1;animation:pulse .28s ease-in-out infinite alternate}
+  @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.14)}}
+  #tellL{left:5%}
+  #tellR{right:5%}
+  #tellB{left:50%;transform:translateX(-50%);top:56%;font-size:30px;letter-spacing:.05em}
+  #tellB.on{animation:none}
+
+  .flash{position:absolute;inset:0;background:var(--alarm);opacity:0;pointer-events:none;z-index:8}
+  .flash.go{animation:fl .3s ease-out}
+  @keyframes fl{from{opacity:.55}to{opacity:0}}
+
+  .popup{
+    position:absolute;left:50%;top:52%;transform:translateX(-50%);
+    font-family:var(--display);font-size:38px;letter-spacing:.02em;
+    color:var(--ecg);text-shadow:0 3px 0 #06120C;z-index:7;
+    opacity:0;white-space:nowrap;
+  }
+  .popup.go{animation:pop .8s ease-out}
+  .popup.bad{color:var(--alarm)}
+  @keyframes pop{0%{opacity:0;transform:translateX(-50%) translateY(14px) scale(.8)}
+    20%{opacity:1;transform:translateX(-50%) translateY(-6px) scale(1.1)}
+    75%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-26px)}}
+
+  /* ---------- ECG ---------- */
+  .telemetry{border-top:1px solid var(--line);background:#060B14;position:relative}
+  .telemetry canvas{display:block;width:100%;height:62px}
+  .tele-label{
+    position:absolute;left:8px;top:6px;font-size:9px;letter-spacing:.14em;
+    color:var(--dim);pointer-events:none;
+  }
+  .tele-val{
+    position:absolute;right:8px;top:6px;font-size:9px;letter-spacing:.1em;
+    color:var(--ecg);pointer-events:none;
+  }
+  .telemetry.alarm .tele-val{color:var(--alarm)}
+  .telemetry.alarm::after{
+    content:"ENGAGEMENT HIGH";position:absolute;right:8px;bottom:6px;
+    font-size:9px;letter-spacing:.14em;color:var(--alarm);animation:bl .7s steps(1) infinite;
+  }
+  @keyframes bl{50%{opacity:0}}
+
+  /* ---------- CONTROLS ---------- */
+  .controls{padding:9px;border-top:1px solid var(--line);background:var(--panel-2)}
+  .ctl-hint{font-size:9px;letter-spacing:.13em;color:var(--dim);margin-bottom:7px;min-height:12px}
+  .row{display:grid;gap:6px}
+  .row.move{grid-template-columns:1fr 1fr 1fr}
+  .row.rebut{grid-template-columns:1fr;margin-top:6px}
+  .k{
+    font:inherit;font-size:12px;color:#C8D8EC;
+    background:#0B1424;border:1px solid var(--line);border-radius:2px;
+    padding:11px 8px;cursor:pointer;text-align:center;
+    transition:background .1s,border-color .1s,transform .06s;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .k:hover:not(:disabled){border-color:var(--spo2);color:#fff}
+  .k:active:not(:disabled){transform:translateY(1px)}
+  .k:disabled{opacity:.3;cursor:default}
+  .k:focus-visible{outline:2px solid var(--spo2);outline-offset:2px}
+  .k small{display:block;font-size:9px;color:var(--dim);letter-spacing:.1em;margin-top:3px}
+  .row.rebut .k{text-align:left;padding:10px 12px;line-height:1.3}
+  .row.rebut .k b{color:var(--resp);font-weight:500;margin-right:8px}
+  .row.rebut .k.hidden{display:none}
+
+  /* ---------- OVERLAYS ---------- */
+  .screen{
+    position:absolute;inset:0;z-index:20;
+    background:rgba(6,11,20,.96);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:22px;text-align:center;gap:14px;
+    overflow:auto;
+  }
+  .screen[hidden]{display:none}
+  .title{
+    font-family:var(--display);font-weight:800;
+    font-size:clamp(46px,13vw,92px);line-height:.84;letter-spacing:-.01em;
+    color:var(--paper);
+  }
+  .title span{color:var(--alarm)}
+  .kicker{font-size:11px;letter-spacing:.24em;color:var(--spo2)}
+  .lede{font-size:12.5px;line-height:1.6;max-width:44ch;color:#A9BCD4}
+  .lede b{color:var(--resp);font-weight:500}
+  .go{
+    font-family:var(--display);font-size:26px;letter-spacing:.06em;
+    background:var(--alarm);color:#0A0F18;border:0;border-radius:2px;
+    padding:9px 30px;cursor:pointer;
+  }
+  .go:hover{background:#fff}
+  .go:focus-visible{outline:2px solid var(--spo2);outline-offset:3px}
+  .foot{font-size:9.5px;letter-spacing:.08em;color:#50678A;max-width:40ch;line-height:1.5}
+
+  /* fight card */
+  .card-name{
+    font-family:var(--display);font-size:clamp(34px,9vw,58px);line-height:.9;
+    color:var(--paper);text-transform:uppercase;
+  }
+  .card-tag{font-size:11px;letter-spacing:.2em;color:var(--alarm)}
+  .tape{
+    font-size:11px;color:#A9BCD4;text-align:left;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    padding:10px 0;width:min(100%,340px);
+  }
+  .tape div{display:flex;justify-content:space-between;padding:3px 0}
+  .tape span:first-child{color:var(--dim);letter-spacing:.1em;font-size:9.5px}
+
+  /* scorecard on paper */
+  .audit{
+    background:var(--paper);color:var(--paper-ink);
+    width:min(100%,380px);padding:16px 18px;text-align:left;
+    box-shadow:5px 5px 0 rgba(0,0,0,.5);
+  }
+  .audit h3{
+    font-family:var(--display);font-size:26px;letter-spacing:.02em;
+    text-transform:uppercase;margin-bottom:2px;
+  }
+  .audit .sub{font-size:9.5px;letter-spacing:.14em;color:#6B6455;margin-bottom:12px}
+  .audit dl{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:11.5px}
+  .audit dt{color:#4A4437}
+  .audit dd{text-align:right;font-weight:600}
+  .audit .verdict{
+    margin-top:12px;padding-top:9px;border-top:1px solid #C8BFA9;
+    font-family:var(--display);font-size:21px;letter-spacing:.03em;text-transform:uppercase;
+  }
+  .audit .verdict.bad{color:#B3222F}
+
+  .thread{
+    background:var(--panel-2);border:1px solid var(--line);
+    width:min(100%,420px);padding:12px;text-align:left;font-size:12px;line-height:1.5;
+  }
+  .thread p{margin-bottom:8px;color:#8FA6C2}
+  .thread p:last-child{margin-bottom:0}
+  .thread b{color:var(--paper);font-weight:600}
+  .thread .win{color:var(--ecg)}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+    body::before{display:none}
+  }
+  @media (max-width:420px){
+    .k{font-size:11px;padding:10px 6px}
+    .row.rebut .k{padding:9px 10px}
+    .bubble{font-size:12px}
+  }
+</style>
+</head>
+<body>
+<div class="cabinet">
+
+  <div class="hud">
+    <div class="hud-top">
+      <span>ROUND <b id="roundNo">1</b> / 4</span>
+      <span id="oppLabel">—</span>
+      <button class="btn-mute" id="mute" type="button">SOUND ON</button>
+    </div>
+    <div class="meters">
+      <div class="meter">
+        <div class="meter-label"><span id="credName">CREDIBILITY</span><span id="credVal">100</span></div>
+        <div class="bar" id="barCred"><i style="width:100%"></i></div>
+      </div>
+      <div class="meter">
+        <div class="meter-label"><span>YOUR PATIENCE</span><span id="patVal">100</span></div>
+        <div class="bar" id="barPat"><i style="width:100%"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ring" id="ring">
+    <div class="ropes">
+      <div class="rope r1"></div><div class="rope r2"></div><div class="rope r3"></div>
+    </div>
+    <div class="fighter" id="fighter"></div>
+    <div class="player" id="player"></div>
+    <div class="bubble" id="bubble"></div>
+    <div class="tell" id="tellL">◀</div>
+    <div class="tell" id="tellR">▶</div>
+    <div class="tell" id="tellB">▼ BODY</div>
+    <div class="popup" id="popup"></div>
+    <div class="flash" id="flash"></div>
+
+    <div class="screen" id="screen"></div>
+  </div>
+
+  <div class="telemetry" id="telemetry">
+    <canvas id="ecg"></canvas>
+    <div class="tele-label">CROWD ENGAGEMENT</div>
+    <div class="tele-val" id="bpm">62 BPM</div>
+  </div>
+
+  <div class="controls">
+    <div class="ctl-hint" id="hint">PRESS START</div>
+    <div class="row move">
+      <button class="k" data-act="left" disabled>DODGE LEFT<small>←</small></button>
+      <button class="k" data-act="body" disabled>BLOCK<small>↓</small></button>
+      <button class="k" data-act="right" disabled>DODGE RIGHT<small>→</small></button>
+    </div>
+    <div class="row rebut" id="rebuts">
+      <button class="k hidden" data-opt="0"><b>1</b><span></span></button>
+      <button class="k hidden" data-opt="1"><b>2</b><span></span></button>
+      <button class="k hidden" data-opt="2"><b>3</b><span></span></button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============ CONTENT ============ */
+
+var LAND = ["…I'd have to check.","Let me get back to you.","That's — actually a fair question.","My cofounder handles that part.","We're still early on that.","Hm. Noted."];
+var WHIFF = ["Cope.","Classic gatekeeping.","You feel threatened. I get it.","Guild protectionism, textbook.","This is why healthcare is broken.","Respectfully, you're the problem."];
+
+var ROSTER = [
+  {
+    id:"kid",
+    name:"The First-Principles Kid",
+    tag:"0 patients seen · 400k impressions",
+    tape:[["RECORD","0–0, undefeated (never fought)"],["STANCE","Reasoning from a whiteboard"],["WEAKNESS","Anything with a denominator"],["REACH","Infinite, allegedly"]],
+    credLabel:"CREDIBILITY",
+    telegraph:1500, strike:640, counter:4200, drift:1.2, dmg:11, hit:20,
+    claims:[
+      {c:"Health is fundamentally an informatics problem.",
+       o:["So is chess. Chess doesn't vomit.","Have you ever taken a history?","What's your resting heart rate?"], a:1},
+      {c:"I derived this from first principles.",
+       o:["Name the two principles.","Sounds rigorous.","Did you read the guideline?"], a:0},
+      {c:"The data is all there. We just need to compute over it.",
+       o:["Where is <em>there</em>? Half of it is a fax.","Compute is cheap now though.","What model are you using?"], a:0},
+      {c:"Doctors are just slow, expensive inference.",
+       o:["Inference on what inputs?","Then who gets sued?","We're also poorly paid."], a:1},
+      {c:"I've read every paper on this.",
+       o:["Were any of them randomized?","Which journal?","How many papers?"], a:0},
+      {c:"Medicine hasn't been disrupted because incumbents are lazy.",
+       o:["Or because people die when you're wrong.","Fair, EHRs are bad.","Have you met a hospital CFO?"], a:0}
+    ]
+  },
+  {
+    id:"pete",
+    name:"Peptide Pete",
+    tag:"Sponsored by himself · 9% body fat · 3% sleep",
+    tape:[["RECORD","41 supplements, 0 trials"],["STANCE","Wide, due to lats"],["WEAKNESS","Follow-up duration"],["REACH","Ships to 12 countries"]],
+    credLabel:"CREDIBILITY",
+    telegraph:1300, strike:560, counter:3800, drift:1.7, dmg:13, hit:20,
+    claims:[
+      {c:"This peptide is genuinely a game changer.",
+       o:["In humans, or in eleven mice?","What's the dose?","Where do you buy it?"], a:0},
+      {c:"My biomarkers have never looked better.",
+       o:["Which one predicts an outcome?","How often do you test?","Congrats, honestly."], a:0},
+      {c:"Big Pharma doesn't want you to know about this.",
+       o:["It's $400 a month. Who's Big here?","They do suppress things.","What's the mechanism?"], a:0},
+      {c:"Zero side effects. I feel incredible.",
+       o:["Compared with what baseline?","How long is the follow-up?","Any bloodwork?"], a:1},
+      {c:"It's research-use-only, so it's totally fine.",
+       o:["Fine for you, or for the seller?","Is it FDA-cleared?","Who compounds it?"], a:0},
+      {c:"I optimize sleep, glucose, VO2 max, and HRV daily.",
+       o:["That's impressive discipline.","What did you change because of it?","Which wearable?"], a:1},
+      {c:"My grandfather died of this, so I've done the research.",
+       o:["I'm sorry. What was his age?","One case isn't a study.","Was it genetic?"], a:1}
+    ]
+  },
+  {
+    id:"sam",
+    name:"Series A Sam",
+    tag:"14 months of runway · pivots when struck",
+    tape:[["RECORD","3 pivots, 1 logo slide"],["STANCE","Whatever the round demands"],["WEAKNESS","The word 'liable'"],["REACH","Warm intro only"]],
+    credLabel:"RUNWAY",
+    telegraph:1150, strike:500, counter:3400, drift:2.2, dmg:14, hit:19,
+    pivotAt:0.5,
+    claims:[
+      {c:"We're the AI layer for primary care.",
+       o:["Who is liable when the layer is wrong?","What's your ARR?","Which EHR do you sit on?"], a:0},
+      {c:"We've achieved physician-level diagnostic accuracy.",
+       o:["On the benchmark, or on a Tuesday?","Which physicians?","What's the AUC?"], a:0},
+      {c:"We're in a pilot with a major health system.",
+       o:["Did they pay you, or did you pay them?","Which system?","How many sites?"], a:0},
+      {c:"We're replacing the visit entirely.",
+       o:["Who examines the patient?","Async is the future.","What about labs?"], a:0},
+      {c:"We cut clinician burden by sixty percent.",
+       o:["Measured how, and by whom?","That's a big number.","Per encounter?"], a:0},
+      {c:"Our moat is the data flywheel.",
+       o:["Whose data? Did they consent?","Everyone says flywheel.","How much data?"], a:0}
+    ],
+    pivotClaims:[
+      {c:"We're also launching a longevity supplement brand.",
+       o:["Is that the same company?","Smart diversification.","What's in it?"], a:0},
+      {c:"Actually we're B2B2C now. Enterprise-first.",
+       o:["Who's the buyer, and what's their problem?","Makes sense.","Same product?"], a:0},
+      {c:"We're rebranding. New name drops Monday.",
+       o:["Does the product change too?","Love the new logo.","Same domain?"], a:0},
+      {c:"Honestly the real business was always the model.",
+       o:["Trained on what, exactly?","Foundation models are hot.","How many parameters?"], a:0}
+    ]
+  },
+  {
+    id:"boss",
+    name:"The Infinite Compute",
+    tag:"Final boss · has no face, only a feed",
+    tape:[["RECORD","Undefeated in replies"],["STANCE","Manifesto"],["WEAKNESS","'So what do I do Monday?'"],["REACH","The whole timeline"]],
+    credLabel:"CREDIBILITY",
+    telegraph:900, strike:450, counter:3000, drift:2.7, dmg:15, hit:18,
+    superAt:0.55,
+    claims:[
+      {c:"With infinite compute, we would all be healthy.",
+       o:["Compute over what, exactly?","Compute is getting cheaper.","How much is infinite?"], a:0},
+      {c:"We have the database of the person.",
+       o:["Show me one complete record.","Where is it hosted?","Is it FHIR?"], a:0},
+      {c:"And we have the database of medicine.",
+       o:["Which parts of it are wrong?","Is it up to date?","How large is it?"], a:0},
+      {c:"We simply need to compute between the two.",
+       o:["That's a differential. It's the hard part.","Sounds tractable.","What's the runtime?"], a:0},
+      {c:"Historically we've used the human doctor for that compute.",
+       o:["The doctor also decides what matters.","Humans are slow.","And nurses?"], a:0},
+      {c:"Everything else is just sentiment and guild capture.",
+       o:["Name one thing you'd be accountable for.","Some of it is.","Guilds do exist."], a:0}
+    ]
+  }
+];
+
+/* ============ ART ============ */
+
+function svgKid(){return '<svg viewBox="0 0 200 170" aria-hidden="true">'+
+ '<ellipse cx="100" cy="162" rx="60" ry="8" fill="#050A12" opacity=".7"/>'+
+ '<path d="M52 160 Q48 96 100 92 Q152 96 148 160Z" fill="#2B3F63"/>'+
+ '<path d="M74 96 Q100 118 126 96 L120 160 L80 160Z" fill="#38507C"/>'+
+ '<circle cx="100" cy="66" r="30" fill="#E8B692"/>'+
+ '<path d="M68 62 Q100 24 132 62 Q126 44 100 40 Q74 44 68 62Z" fill="#1D2B44"/>'+
+ '<rect x="82" y="60" width="15" height="9" rx="2" fill="#0B1424"/>'+
+ '<rect x="103" y="60" width="15" height="9" rx="2" fill="#0B1424"/>'+
+ '<rect x="97" y="63" width="6" height="2" fill="#0B1424"/>'+
+ '<rect x="60" y="120" width="46" height="30" rx="3" fill="#0E1728" stroke="#38D2E8" stroke-width="1.5" transform="rotate(-10 83 135)"/>'+
+ '<text x="83" y="139" font-family="monospace" font-size="9" fill="#38D2E8" text-anchor="middle" transform="rotate(-10 83 135)">1st</text>'+
+ '<circle cx="150" cy="128" r="20" fill="#C33B4C"/><circle cx="150" cy="122" r="6" fill="#E4566A"/>'+
+ '</svg>';}
+
+function svgPete(){return '<svg viewBox="0 0 200 170" aria-hidden="true">'+
+ '<ellipse cx="100" cy="162" rx="64" ry="8" fill="#050A12" opacity=".7"/>'+
+ '<path d="M40 160 Q34 92 100 86 Q166 92 160 160Z" fill="#D9A177"/>'+
+ '<path d="M100 92 L100 150" stroke="#B47F57" stroke-width="3"/>'+
+ '<path d="M70 108 Q84 120 96 112 M130 108 Q116 120 104 112" stroke="#B47F57" stroke-width="3" fill="none"/>'+
+ '<circle cx="100" cy="60" r="26" fill="#E8B692"/>'+
+ '<path d="M76 50 Q100 32 124 50 Q118 40 100 38 Q82 40 76 50Z" fill="#3A2A1C"/>'+
+ '<rect x="84" y="54" width="32" height="8" rx="4" fill="#0B1424"/>'+
+ '<rect x="82" y="118" width="14" height="34" rx="2" fill="#C9D6E6" transform="rotate(-18 89 135)"/>'+
+ '<circle cx="46" cy="128" r="22" fill="#3E8E6B"/><rect x="20" y="123" width="26" height="9" rx="3" fill="#9FD9C0"/>'+
+ '<circle cx="154" cy="128" r="22" fill="#3E8E6B"/><rect x="154" y="123" width="26" height="9" rx="3" fill="#9FD9C0"/>'+
+ '<rect x="118" y="96" width="20" height="10" rx="5" fill="#0E1728" stroke="#F2CF5B"/>'+
+ '</svg>';}
+
+function svgSam(){return '<svg viewBox="0 0 200 170" aria-hidden="true">'+
+ '<ellipse cx="100" cy="162" rx="58" ry="8" fill="#050A12" opacity=".7"/>'+
+ '<path d="M54 160 Q50 98 100 92 Q150 98 146 160Z" fill="#1B2740"/>'+
+ '<path d="M100 92 L78 160 L100 160Z" fill="#E7EDF6"/><path d="M100 92 L122 160 L100 160Z" fill="#E7EDF6"/>'+
+ '<path d="M86 92 L100 118 L114 92 L104 90 L100 100 L96 90Z" fill="#C33B4C"/>'+
+ '<circle cx="100" cy="64" r="28" fill="#E8B692"/>'+
+ '<path d="M72 58 Q100 30 128 58 Q122 44 100 42 Q78 44 72 58Z" fill="#4A3524"/>'+
+ '<rect x="86" y="58" width="28" height="7" rx="3" fill="#0B1424"/>'+
+ '<rect x="128" y="106" width="52" height="34" rx="2" fill="#EFE7D6" transform="rotate(9 154 123)"/>'+
+ '<path d="M136 132 L146 120 L156 126 L172 110" stroke="#C33B4C" stroke-width="3" fill="none" transform="rotate(9 154 123)"/>'+
+ '<circle cx="44" cy="126" r="20" fill="#C33B4C"/><circle cx="44" cy="120" r="6" fill="#E4566A"/>'+
+ '</svg>';}
+
+function svgBoss(){
+  var lines="";
+  for(var i=0;i<11;i++){
+    var w=40+((i*37)%110);
+    lines+='<rect x="46" y="'+(28+i*11)+'" width="'+w+'" height="4" rx="2" fill="#35E08F" opacity="'+(0.16+(i%4)*0.14).toFixed(2)+'"/>';
+  }
+  return '<svg viewBox="0 0 200 170" aria-hidden="true">'+
+   '<ellipse cx="100" cy="164" rx="66" ry="8" fill="#050A12" opacity=".7"/>'+
+   '<rect x="38" y="16" width="124" height="140" rx="3" fill="#0A1424" stroke="#35E08F" stroke-width="1.5"/>'+
+   lines+
+   '<rect x="38" y="16" width="124" height="140" fill="url(#g1)" opacity=".35"/>'+
+   '<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">'+
+   '<stop offset="0" stop-color="#35E08F" stop-opacity="0"/><stop offset="1" stop-color="#38D2E8" stop-opacity=".5"/>'+
+   '</linearGradient></defs>'+
+   '<circle cx="22" cy="118" r="18" fill="#1B2740" stroke="#35E08F"/>'+
+   '<circle cx="178" cy="118" r="18" fill="#1B2740" stroke="#35E08F"/>'+
+   '</svg>';
+}
+
+function svgPlayer(){return '<svg viewBox="0 0 300 120" aria-hidden="true">'+
+ '<circle cx="150" cy="104" r="46" fill="#22354F"/>'+
+ '<path d="M104 104 Q150 62 196 104Z" fill="#2C4363"/>'+
+ '<circle cx="46" cy="76" r="34" fill="#3E5A82"/><circle cx="46" cy="66" r="10" fill="#54749E"/>'+
+ '<circle cx="254" cy="76" r="34" fill="#3E5A82"/><circle cx="254" cy="66" r="10" fill="#54749E"/>'+
+ '<rect x="20" y="102" width="52" height="10" rx="5" fill="#EFE7D6" opacity=".9"/>'+
+ '<rect x="228" y="102" width="52" height="10" rx="5" fill="#EFE7D6" opacity=".9"/>'+
+ '</svg>';}
+
+var ART={kid:svgKid,pete:svgPete,sam:svgSam,boss:svgBoss};
+
+/* ============ DOM ============ */
+var $=function(s){return document.querySelector(s);};
+var elFighter=$("#fighter"),elPlayer=$("#player"),elBubble=$("#bubble"),
+    elPopup=$("#popup"),elFlash=$("#flash"),elScreen=$("#screen"),
+    elHint=$("#hint"),elRebuts=$("#rebuts"),elRound=$("#roundNo"),
+    elOpp=$("#oppLabel"),elCredName=$("#credName"),elCredVal=$("#credVal"),
+    elPatVal=$("#patVal"),elBarCred=$("#barCred"),elBarPat=$("#barPat"),
+    elBpm=$("#bpm"),elTele=$("#telemetry"),elMute=$("#mute");
+var tells={left:$("#tellL"),right:$("#tellR"),body:$("#tellB")};
+var moveBtns=Array.prototype.slice.call(document.querySelectorAll(".row.move .k"));
+var rebutBtns=Array.prototype.slice.call(document.querySelectorAll(".row.rebut .k"));
+elPlayer.innerHTML=svgPlayer();
+
+/* ============ AUDIO ============ */
+var actx=null,muted=false;
+function tone(f,d,type,vol){
+  if(muted)return;
+  try{
+    if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();
+    var o=actx.createOscillator(),g=actx.createGain();
+    o.type=type||"square";o.frequency.value=f;
+    g.gain.setValueAtTime(vol||0.06,actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+d);
+    o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+d);
+  }catch(e){}
+}
+elMute.addEventListener("click",function(){
+  muted=!muted;elMute.textContent=muted?"SOUND OFF":"SOUND ON";
+});
+
+/* ============ STATE ============ */
+var G={
+  phase:"title",     // title, card, telegraph, strike, counter, stagger, super, audit, over
+  idx:0,
+  opp:null,
+  cred:100, pat:100, eng:8,
+  t:0,               // ms remaining in phase
+  attack:null,
+  claim:null,
+  pool:[], poolI:0,
+  pivoted:false, supered:false,
+  asked:0, answered:0, engPeak:0,
+  locked:false
+};
+
+function shuffle(a){
+  a=a.slice();
+  for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}
+  return a;
+}
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
+
+/* ============ RENDER ============ */
+function setBars(){
+  var c=Math.max(0,G.cred),p=Math.max(0,G.pat);
+  elBarCred.firstElementChild.style.width=c+"%";
+  elBarPat.firstElementChild.style.width=p+"%";
+  elCredVal.textContent=Math.round(c);
+  elPatVal.textContent=Math.round(p);
+  elBarCred.classList.toggle("low",c<30);
+  elBarPat.classList.toggle("low",p<30);
+}
+function say(html){elBubble.innerHTML=html;elBubble.classList.add("on");}
+function hush(){elBubble.classList.remove("on");}
+function pop(txt,bad){
+  elPopup.textContent=txt;
+  elPopup.className="popup"+(bad?" bad":"");
+  void elPopup.offsetWidth;
+  elPopup.classList.add("go");
+}
+function shake(){elFlash.classList.remove("go");void elFlash.offsetWidth;elFlash.classList.add("go");}
+function lean(dir){
+  elFighter.className="fighter"+(dir?" lean-"+(dir==="body"?"b":dir[0]):"");
+}
+function showTell(dir,on){
+  tells[dir].classList.toggle("on",!!on);
+}
+function clearTells(){for(var k in tells)tells[k].classList.remove("on");}
+function moveEnabled(on){
+  moveBtns.forEach(function(b){b.disabled=!on;});
+}
+function showRebuts(opts){
+  rebutBtns.forEach(function(b,i){
+    if(opts&&opts[i]){
+      b.classList.remove("hidden");
+      b.disabled=false;
+      b.querySelector("span").innerHTML=opts[i];
+    }else{
+      b.classList.add("hidden");b.disabled=true;
+    }
+  });
+}
+function hideRebuts(){showRebuts(null);}
+
+/* ============ ECG ============ */
+var cv=$("#ecg"),cx=cv.getContext("2d"),W=0,H=0,dpr=1;
+var trace=[],phase=0;
+function sizeCanvas(){
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=cv.clientWidth;H=cv.clientHeight||62;
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  cx.setTransform(dpr,0,0,dpr,0,0);
+  trace=new Array(Math.max(60,Math.round(W))).fill(0);
+}
+window.addEventListener("resize",sizeCanvas);
+
+function beatValue(p){
+  // crude PQRST
+  if(p<0.10) return 0.12*Math.sin(p/0.10*Math.PI);
+  if(p<0.16) return -0.15;
+  if(p<0.20) return 1.0;
+  if(p<0.25) return -0.35;
+  if(p<0.45) return 0.28*Math.sin((p-0.25)/0.20*Math.PI);
+  return 0;
+}
+function drawECG(dt){
+  var e=G.eng/100;
+  var bpm=58+e*112;
+  var step=bpm/60*dt/1000;
+  phase+=step;
+  if(phase>=1)phase-=1;
+  var amp=0.5+e*0.55;
+  var noise=(Math.random()-0.5)*e*0.28;
+  var v=beatValue(phase)*amp+noise;
+  trace.push(v);
+  while(trace.length>W)trace.shift();
+
+  cx.clearRect(0,0,W,H);
+  cx.strokeStyle="rgba(53,224,143,0.07)";cx.lineWidth=1;
+  for(var gx=0;gx<W;gx+=20){cx.beginPath();cx.moveTo(gx+.5,0);cx.lineTo(gx+.5,H);cx.stroke();}
+  var col = e>0.8 ? "#FF3B52" : (e>0.55 ? "#F2CF5B" : "#35E08F");
+  cx.strokeStyle=col;cx.lineWidth=1.6;cx.lineJoin="round";
+  cx.shadowColor=col;cx.shadowBlur=6;
+  cx.beginPath();
+  var mid=H*0.62;
+  for(var i=0;i<trace.length;i++){
+    var y=mid-trace[i]*(H*0.42);
+    if(i===0)cx.moveTo(0,y);else cx.lineTo(i,y);
+  }
+  cx.stroke();
+  cx.shadowBlur=0;
+  elBpm.textContent=Math.round(bpm)+" BPM";
+  elTele.classList.toggle("alarm",G.eng>78);
+}
+
+/* ============ SCREENS ============ */
+function screen(html,cb,btnLabel){
+  elScreen.hidden=false;
+  elScreen.innerHTML=html;
+  if(cb){
+    var b=document.createElement("button");
+    b.className="go";b.type="button";b.textContent=btnLabel||"FIGHT";
+    b.addEventListener("click",function(){elScreen.hidden=true;cb();});
+    elScreen.appendChild(b);
+    setTimeout(function(){b.focus();},30);
+  }
+}
+function hideScreen(){elScreen.hidden=true;}
+
+function titleScreen(){
+  G.phase="title";
+  moveEnabled(false);hideRebuts();hush();clearTells();lean(null);
+  elHint.textContent="PRESS START";
+  screen(
+    '<div class="kicker">A CLINICAL BOXING SIMULATION</div>'+
+    '<h1 class="title">COMPUTE<br><span>OUT!!</span></h1>'+
+    '<p class="lede">Four rounds against the timeline. Punches do nothing here — '+
+    '<b>questions</b> do the damage.</p>'+
+    '<p class="lede">Dodge the incoming shot (<b>← ↓ →</b>), then pick the one question '+
+    'he can\'t answer (<b>1 2 3</b>). Wrong question and he ratios you: the crowd trace '+
+    'climbs, and if it redlines, you lose the round no matter how the fight went.</p>'+
+    '<p class="foot">All fighters are archetypes. Any resemblance to a specific timeline is coincidental.</p>',
+    function(){G.idx=0;startFight();},"START"
+  );
+}
+
+function cardScreen(){
+  var o=ROSTER[G.idx];
+  G.phase="card";
+  var tape=o.tape.map(function(r){return '<div><span>'+r[0]+'</span><span>'+r[1]+'</span></div>';}).join("");
+  screen(
+    '<div class="kicker">ROUND '+(G.idx+1)+' OF 4</div>'+
+    '<h2 class="card-name">'+o.name+'</h2>'+
+    '<div class="card-tag">'+o.tag+'</div>'+
+    '<div class="tape">'+tape+'</div>',
+    function(){beginRound();},"TOUCH GLOVES"
+  );
+}
+
+function auditScreen(won){
+  G.phase="audit";
+  moveEnabled(false);hideRebuts();hush();clearTells();
+  var o=G.opp;
+  var acc=G.asked?Math.round(G.answered/G.asked*100):0;
+  var verdict, bad=false, why="";
+  if(won){verdict="Decision: you";}
+  else if(G.eng>=100){verdict="Ratio'd";bad=true;why="Lost on the scorecard. He was wrong and it did not matter.";}
+  else {verdict="You gave up";bad=true;why="Patience exhausted. Understandable.";}
+  screen(
+    '<div class="audit">'+
+      '<h3>Chart audit</h3>'+
+      '<div class="sub">ROUND '+(G.idx+1)+' — '+o.name.toUpperCase()+'</div>'+
+      '<dl>'+
+        '<dt>Questions asked</dt><dd>'+G.asked+'</dd>'+
+        '<dt>Questions that landed</dt><dd>'+G.answered+'</dd>'+
+        '<dt>Question accuracy</dt><dd>'+acc+'%</dd>'+
+        '<dt>Peak engagement</dt><dd>'+Math.round(G.engPeak)+'</dd>'+
+        '<dt>His credibility</dt><dd>'+Math.max(0,Math.round(G.cred))+'</dd>'+
+      '</dl>'+
+      '<div class="verdict'+(bad?" bad":"")+'">'+verdict+'</div>'+
+    '</div>'+
+    (why?'<p class="lede">'+why+'</p>':'')+
+    (won&&G.idx<3?'<p class="lede">He posts a thread about it later. You have clinic in the morning.</p>':''),
+    function(){
+      if(won){
+        if(G.idx>=ROSTER.length-1){finaleScreen();}
+        else {G.idx++;startFight();}
+      }else{
+        startFight();
+      }
+    },
+    won?(G.idx>=ROSTER.length-1?"SEE THE REPLIES":"NEXT ROUND"):"RUN IT BACK"
+  );
+}
+
+function finaleScreen(){
+  G.phase="over";
+  screen(
+    '<div class="kicker">TECHNICAL KNOCKOUT</div>'+
+    '<h2 class="card-name">The reply<br>that ends it</h2>'+
+    '<div class="thread">'+
+      '<p><b>The Infinite Compute</b><br>…and that is why health is, at bottom, a compute problem. 🧵 1/47</p>'+
+      '<p><b>@lurker_pgy3</b><br>genuine question, not a dunk — what should I actually do differently on Monday?</p>'+
+      '<p class="win">The thread goes quiet. Someone asked for the denominator, and it wasn\'t you.</p>'+
+    '</div>'+
+    '<p class="lede">That was the win condition. Not the punches — the moment somebody in the crowd '+
+    'started asking too.</p>'+
+    '<p class="foot">Clinic starts in six hours.</p>',
+    function(){G.idx=0;titleScreen();},"NEW CAREER"
+  );
+}
+
+/* ============ FIGHT ============ */
+function startFight(){
+  G.opp=ROSTER[G.idx];
+  elRound.textContent=String(G.idx+1);
+  elOpp.textContent=G.opp.name.toUpperCase();
+  elCredName.textContent=G.opp.credLabel;
+  elFighter.innerHTML=ART[G.opp.id]();
+  G.cred=100;G.pat=100;G.eng=8;
+  G.asked=0;G.answered=0;G.engPeak=8;
+  G.pivoted=false;G.supered=false;
+  G.pool=shuffle(G.opp.claims);G.poolI=0;
+  setBars();
+  cardScreen();
+}
+
+function beginRound(){
+  nextClaim();
+}
+
+function nextClaim(){
+  if(G.poolI>=G.pool.length){G.pool=shuffle(G.pool);G.poolI=0;}
+  G.claim=G.pool[G.poolI++];
+  G.attack=pick(["left","right","body"]);
+  G.phase="telegraph";
+  G.t=G.opp.telegraph;
+  G.locked=false;
+  lean(null);clearTells();hideRebuts();
+  say(G.claim.c);
+  elHint.textContent="READ THE TELL — ← ↓ →";
+  moveEnabled(true);
+  tone(220,0.05,"square",0.03);
+}
+
+function toStrike(){
+  G.phase="strike";
+  G.t=G.opp.strike;
+  lean(G.attack);
+  showTell(G.attack,true);
+  tone(140,0.09,"sawtooth",0.05);
+}
+
+function takeHit(){
+  clearTells();lean(null);moveEnabled(false);
+  G.pat-=G.opp.dmg;
+  G.eng+=7;
+  shake();
+  pop("HIT",true);
+  tone(90,0.18,"square",0.09);
+  setBars();
+  elHint.textContent="…";
+  G.phase="stagger";G.t=900;
+  say("<em>"+pick(WHIFF)+"</em>");
+  if(G.pat<=0){G.pat=0;setBars();setTimeout(function(){auditScreen(false);},700);G.phase="wait";}
+}
+
+function toCounter(){
+  clearTells();lean(null);moveEnabled(false);
+  G.phase="counter";
+  G.t=G.opp.counter;
+  pop("SLIP");
+  tone(660,0.07,"square",0.05);
+  elHint.textContent="ASK THE QUESTION — 1 2 3";
+  showRebuts(G.claim.o);
+}
+
+function answer(i){
+  if(G.phase!=="counter")return;
+  hideRebuts();
+  G.asked++;
+  if(i===G.claim.a){
+    G.answered++;
+    G.cred-=G.opp.hit;
+    G.eng=Math.max(0,G.eng-11);
+    pop("LANDED");
+    tone(880,0.09,"square",0.06);
+    setTimeout(function(){tone(1180,0.12,"square",0.05);},90);
+    elFighter.classList.add("stunned");
+    setTimeout(function(){elFighter.classList.remove("stunned");},700);
+    say("<em>"+pick(LAND)+"</em>");
+  }else{
+    G.eng+=13;
+    G.pat-=4;
+    pop("WHIFF",true);
+    tone(160,0.14,"sawtooth",0.06);
+    say("<em>"+pick(WHIFF)+"</em>");
+  }
+  setBars();
+  G.phase="stagger";G.t=1000;
+
+  if(G.cred<=0){
+    G.cred=0;setBars();
+    G.phase="wait";
+    setTimeout(function(){auditScreen(true);},900);
+    return;
+  }
+  if(G.pat<=0){
+    G.pat=0;setBars();G.phase="wait";
+    setTimeout(function(){auditScreen(false);},700);
+    return;
+  }
+  checkSpecials();
+}
+
+function counterTimeout(){
+  hideRebuts();
+  G.asked++;
+  G.eng+=9;
+  pop("NO QUESTION",true);
+  tone(120,0.16,"sawtooth",0.05);
+  say("<em>Silence. He takes that as agreement.</em>");
+  setBars();
+  G.phase="stagger";G.t=900;
+}
+
+function checkSpecials(){
+  var o=G.opp;
+  if(o.pivotAt&&!G.pivoted&&G.cred<=100*o.pivotAt){
+    G.pivoted=true;
+    G.pool=shuffle(o.pivotClaims);G.poolI=0;
+    elCredName.textContent="RUNWAY (PIVOTING)";
+    pop("PIVOT!",true);
+    tone(500,0.1,"triangle",0.05);
+    say("<em>He is not losing. He is changing what the fight is about.</em>");
+    G.t=1500;
+  }
+  if(o.superAt&&!G.supered&&G.cred<=100*o.superAt){
+    G.supered=true;
+    setTimeout(startSuper,900);
+    G.phase="wait";
+  }
+}
+
+/* --- boss super: wall of text --- */
+var superBtn=null;
+function startSuper(){
+  G.phase="super";G.t=2600;
+  moveEnabled(false);hideRebuts();
+  elHint.textContent="ONE FOLLOW-UP. NOW.";
+  var wall="Health is downstream of information. Information is downstream of compute. "+
+    "Compute is downstream of capital. Capital is downstream of narrative. Narrative is "+
+    "downstream of health. The loop closes. The doctor is a lossy adapter between two "+
+    "databases and the adapter is the bottleneck and the bottleneck is the business and "+
+    "the business is the future and the future is already here it is just unevenly "+
+    "distributed across the substrate of";
+  say('<span style="font-size:11px;line-height:1.25;display:block;max-height:120px;overflow:hidden">'+wall+'</span>');
+  shake();
+  tone(70,0.5,"sawtooth",0.07);
+  superBtn=document.createElement("button");
+  superBtn.className="k";
+  superBtn.style.gridColumn="1 / -1";
+  superBtn.innerHTML='<b style="color:var(--resp)">SPACE</b> Ask: “So what should I do Monday?”';
+  elRebuts.appendChild(superBtn);
+  superBtn.addEventListener("click",resolveSuper);
+}
+function resolveSuper(good){
+  if(G.phase!=="super")return;
+  if(superBtn&&superBtn.parentNode){superBtn.parentNode.removeChild(superBtn);superBtn=null;}
+  if(good===false){
+    G.pat-=22;G.eng+=18;
+    pop("BURIED",true);shake();
+    say("<em>The thread continues for another forty tweets.</em>");
+  }else{
+    G.cred-=26;G.eng=Math.max(0,G.eng-18);
+    pop("BLOCKED");
+    tone(990,0.14,"square",0.07);
+    say("<em>He stops. Nobody has asked him that.</em>");
+  }
+  setBars();
+  G.phase="stagger";G.t=1200;
+  if(G.cred<=0){G.cred=0;setBars();G.phase="wait";setTimeout(function(){auditScreen(true);},900);}
+  else if(G.pat<=0){G.pat=0;setBars();G.phase="wait";setTimeout(function(){auditScreen(false);},700);}
+}
+
+/* ============ INPUT ============ */
+function move(dir){
+  if(G.locked)return;
+  elPlayer.className="player d-"+(dir==="body"?"b":dir[0]);
+  setTimeout(function(){elPlayer.className="player";},260);
+  if(G.phase!=="telegraph"&&G.phase!=="strike")return;
+  G.locked=true;
+  if(dir===G.attack){toCounter();}
+  else{takeHit();}
+}
+moveBtns.forEach(function(b){
+  b.addEventListener("click",function(){move(b.getAttribute("data-act"));});
+});
+rebutBtns.forEach(function(b){
+  b.addEventListener("click",function(){answer(parseInt(b.getAttribute("data-opt"),10));});
+});
+document.addEventListener("keydown",function(e){
+  var k=e.key;
+  if(k==="ArrowLeft"){e.preventDefault();move("left");}
+  else if(k==="ArrowRight"){e.preventDefault();move("right");}
+  else if(k==="ArrowDown"){e.preventDefault();move("body");}
+  else if(k==="1"||k==="2"||k==="3"){answer(parseInt(k,10)-1);}
+  else if(k===" "){
+    if(G.phase==="super"){e.preventDefault();resolveSuper(true);}
+  }
+});
+
+/* ============ LOOP ============ */
+var last=0;
+function loop(ts){
+  if(!last)last=ts;
+  var dt=Math.min(64,ts-last);last=ts;
+
+  if(G.phase!=="title"&&G.phase!=="card"&&G.phase!=="audit"&&G.phase!=="over"){
+    G.eng+=(G.opp?G.opp.drift:1)*dt/1000;
+    if(G.eng>G.engPeak)G.engPeak=G.eng;
+    if(G.eng>=100){
+      G.eng=100;
+      var p=G.phase;
+      if(p!=="wait"){G.phase="wait";setTimeout(function(){auditScreen(false);},400);}
+    }
+    G.t-=dt;
+    if(G.t<=0){
+      if(G.phase==="telegraph"){toStrike();}
+      else if(G.phase==="strike"){G.locked=true;takeHit();}
+      else if(G.phase==="counter"){counterTimeout();}
+      else if(G.phase==="stagger"){hush();nextClaim();}
+      else if(G.phase==="super"){resolveSuper(false);}
+    }
+  }
+  drawECG(dt);
+  requestAnimationFrame(loop);
+}
+
+sizeCanvas();
+setBars();
+titleScreen();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
